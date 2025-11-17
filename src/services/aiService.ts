@@ -140,17 +140,71 @@ async function resolvePlace(name: string, locationCtx?: string): Promise<Resolve
       return null;
     }
 
-    // กรองความสอดคล้องของจังหวัด/เมืองแบบหยาบ
+    // ******************************************************************
+    // 🛠️ กรองความสอดคล้องของจังหวัด/เมืองแบบยืดหยุ่นและชาญฉลาด
+    // ******************************************************************
     if (locationCtx) {
       const addr = (first.formatted_address || "").toLowerCase();
       const ctx = locationCtx.toLowerCase();
+      const placeName = (first.name || "").toLowerCase();
+      const searchName = name.toLowerCase();
       
-      // ถ้า context เป็นชื่อจังหวัด/เมืองภาษาไทย → ต้องพบใน address
-      if (!addr.includes(ctx)) {
-        console.warn(`⚠️ Place "${first.name}" not in context "${locationCtx}"`);
-        return null; // ข้ามผลลัพธ์ที่ไม่ตรง context
+      // 1. แยก context เป็นคำสำคัญ (เช่น "หัวหิน-ชะอำ" → ["หัวหิน", "ชะอำ"])
+      let contextKeywords = ctx
+        .split(/[-\s,/]+/) 
+        .filter(w => w.length >= 2);
+      
+      // 2. เพิ่มชื่อจังหวัดที่เกี่ยวข้องสำหรับพื้นที่เฉพาะ
+      if (ctx.includes('หัวหิน') || ctx.includes('ชะอำ')) {
+        // หัวหินอยู่ในประจวบคีรีขันธ์, ชะอำอยู่ในเพชรบุรี
+        contextKeywords.push('ประจวบคีรีขันธ์', 'เพชรบุรี', 'prachuap', 'phetchaburi');
+      }
+      if (ctx.includes('ภูเก็ต') || ctx.includes('phuket')) {
+        contextKeywords.push('ภูเก็ต', 'phuket');
+      }
+      if (ctx.includes('เชียงใหม่') || ctx.includes('chiang mai')) {
+        contextKeywords.push('เชียงใหม่', 'chiang mai');
+      }
+      if (ctx.includes('กระบี่') || ctx.includes('krabi')) {
+        contextKeywords.push('กระบี่', 'krabi');
+      }
+      if (ctx.includes('พัทยา') || ctx.includes('pattaya')) {
+        contextKeywords.push('ชนบุรี', 'chonburi', 'pattaya');
+      }
+      
+      // นำคำที่ซ้ำออก
+      contextKeywords = [...new Set(contextKeywords)];
+      
+      // 3. ตรวจสอบว่ามีคำสำคัญใดคำหนึ่งใน address หรือไม่
+      const hasMatch = contextKeywords.some(keyword => addr.includes(keyword));
+      
+      // 4. หากไม่มีคำ Match เลย
+      if (!hasMatch && contextKeywords.length > 0) {
+        console.warn(
+          `⚠️ Place "${first.name}" (${addr}) not in context "${locationCtx}". ` +
+          `Keywords checked: ${contextKeywords.join(', ')}`
+        );
+        
+        // ⚠️ ทางออกชั่วคราว: ผ่อนปรนการตรวจสอบ
+        // หาก Context Check ล้มเหลว แต่ชื่อสถานที่ที่ Google คืนค่ามา
+        // มีชื่อสถานที่ที่ AI ส่งมา → ให้ผ่าน (เพราะ Google มักจะคืนค่าที่ถูกต้อง)
+        const nameMatch = 
+          placeName.includes(searchName) || 
+          searchName.includes(placeName) ||
+          placeName.split(/\s+/).some(word => searchName.includes(word) && word.length >= 3);
+        
+        if (nameMatch) {
+          console.log(
+            `✅ Forcing resolution: Name match found despite context warning. ` +
+            `Place: "${first.name}", Search: "${name}"`
+          );
+        } else {
+          console.log(`❌ Skipping: Neither context nor name match. Place will be skipped.`);
+          return null; // ข้ามผลลัพธ์ที่ไม่ตรง context และชื่อ
+        }
       }
     }
+    // ******************************************************************
 
     const resolved: ResolvedPlace = {
       place_id: first.place_id,

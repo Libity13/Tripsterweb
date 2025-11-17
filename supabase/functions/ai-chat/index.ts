@@ -306,7 +306,7 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
         {
 
-          "action": "ADD_DESTINATIONS" | "REMOVE_DESTINATIONS" | "REORDER_DESTINATIONS" | "UPDATE_TRIP_INFO" | "RECOMMEND_PLACES" | "ASK_PERSONAL_INFO" | "NO_ACTION",
+          "action": "ADD_DESTINATIONS" | "REMOVE_DESTINATIONS" | "MOVE_DESTINATION" | "REORDER_DESTINATIONS" | "UPDATE_TRIP_INFO" | "RECOMMEND_PLACES" | "ASK_PERSONAL_INFO" | "NO_ACTION",
 
           "destinations": [
 
@@ -372,7 +372,9 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
     - If user wants to remove places, use action: "REMOVE_DESTINATIONS"
 
-    - If user wants to reorder, use action: "REORDER_DESTINATIONS"
+    - If user wants to move ONE place to a different day, use action: "MOVE_DESTINATION" (preferred for single moves)
+
+    - If user wants to reorder multiple places, use action: "REORDER_DESTINATIONS"
 
     - If you need to ask about personal preferences (companions, budget, style), use action: "ASK_PERSONAL_INFO"
 
@@ -564,11 +566,31 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
     - If user says "ลบ [place name]" → use REMOVE_DESTINATIONS with destination_names: ["[place name]"] (MANDATORY)
 
+    - If user says "ย้าย [place name] ไปวันที่ X" or "ย้าย [place name] ไปวันแรก/หลัง" → use MOVE_DESTINATION with destination_name and target_day
+
     - If user says "จัดเรียง" → use REORDER_DESTINATIONS
 
     - If user says "ช่วยหา", "หาที่พัก", "หาร้านอาหาร" → use RECOMMEND_PLACES with location_context from history
 
     - NEVER ask for companions/budget in modification requests
+    
+    
+    
+    CRITICAL: MOVE_DESTINATION Format:
+    
+    {
+      "action": "MOVE_DESTINATION",
+      "destination_name": "exact place name from user message",
+      "target_day": 1, // day number (1, 2, 3, etc.)
+      "target_position": 1 // optional, omit to add at end of day
+    }
+    
+    Example: User says "ย้าย ครัวบ้านไร่ ไปวันแรก" → 
+    {
+      "action": "MOVE_DESTINATION",
+      "destination_name": "ครัวบ้านไร่",
+      "target_day": 1
+    }
 
     - ALWAYS extract location_context from conversation history for RECOMMEND_PLACES
 
@@ -709,6 +731,8 @@ MODIFICATION RULES (when trip exists):
 - "เพิ่ม [place]" → ADD_DESTINATIONS
 
 - "ลบ [place]" → REMOVE_DESTINATIONS with destination_names: ["[place]"] (MANDATORY)
+
+- "ย้าย [place] ไปวันที่ X" → MOVE_DESTINATION with destination_name and target_day
 
 - "ช่วยหา" → RECOMMEND_PLACES
 
@@ -1002,6 +1026,8 @@ MODIFICATION RULES (when trip exists):
 
 - "ลบ [place]" → REMOVE_DESTINATIONS with destination_names: ["[place]"] (MANDATORY)
 
+- "ย้าย [place] ไปวันที่ X" → MOVE_DESTINATION with destination_name and target_day
+
 - "ช่วยหา" → RECOMMEND_PLACES
 
 - "จัดเรียง" → REORDER_DESTINATIONS`
@@ -1040,7 +1066,7 @@ MODIFICATION RULES (when trip exists):
 
     const controller = new AbortController();
 
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // Increased to 45s for Claude
 
 
 
@@ -1324,19 +1350,57 @@ MODIFICATION RULES (when trip exists):
 
       console.error('Content to parse length:', contentToParse.length);
 
-      console.error('Content that failed to parse:', contentToParse.substring(0, 500));
+      
 
-      console.error('Content ends with:', contentToParse.substring(Math.max(0, contentToParse.length - 100)));
+      // Try to repair common JSON issues
 
-      if (retryCount < 1) {
+      try {
 
-        console.log('Retrying Claude call...');
+        // 1. Try to fix unterminated strings by finding the last valid JSON structure
 
-        return await callClaude(userMessage, locale, conversationHistory, options, retryCount + 1);
+        let repairedContent = contentToParse;
+
+        
+
+        // 2. Remove trailing incomplete strings or objects
+
+        const lastCompleteObject = findCompleteJsonObject(contentToParse);
+
+        if (lastCompleteObject) {
+
+          repairedContent = lastCompleteObject;
+
+          console.log('Attempting to parse repaired JSON (length:', repairedContent.length, ')');
+
+          parsed = JSON.parse(repairedContent);
+
+          console.log('✅ Successfully parsed repaired JSON');
+
+        } else {
+
+          throw new Error('Could not repair JSON');
+
+        }
+
+      } catch (repairError) {
+
+        console.error('JSON repair failed:', repairError);
+
+        
+
+        if (retryCount < 1) {
+
+          console.log('Retrying Claude call...');
+
+          return await callClaude(userMessage, locale, conversationHistory, options, retryCount + 1);
+
+        }
+
+        
+
+        throw new Error('Invalid JSON response from AI');
 
       }
-
-      throw new Error('Invalid JSON response from AI');
 
     }
 
@@ -1890,7 +1954,28 @@ Deno.serve(async (req: Request) => {
 
       if (aiResponse && typeof aiResponse === 'object') {
 
-        assistantText = aiResponse.reply || aiResponse.narrative || aiResponse.message || 'ขออภัย ไม่สามารถประมวลผลได้';
+        // Generate reply from actions if reply is missing or empty
+        let generatedReply = aiResponse.reply;
+        if (!generatedReply || generatedReply.trim() === '') {
+          const actions = aiResponse.actions || [];
+          if (actions.length > 0) {
+            const action = actions[0];
+            if (action.action === 'ADD_DESTINATIONS' && action.destinations && action.destinations.length > 0) {
+              const destNames = action.destinations.map((d: any) => d.name).join(', ');
+              generatedReply = `ได้เพิ่มสถานที่ ${action.destinations.length} แห่งให้คุณแล้ว: ${destNames}`;
+            } else if (action.action === 'REMOVE_DESTINATIONS' && action.destination_names && action.destination_names.length > 0) {
+              generatedReply = `ได้ลบสถานที่ ${action.destination_names.join(', ')} ออกจากแผนการเดินทางแล้ว`;
+            } else if (action.action === 'ASK_PERSONAL_INFO') {
+              generatedReply = 'กรุณาบอกข้อมูลเพิ่มเติมเกี่ยวกับการเดินทางของคุณ เช่น จำนวนคน งบประมาณ หรือสไตล์การเที่ยว';
+            } else {
+              generatedReply = 'ได้ประมวลผลคำขอของคุณแล้ว';
+            }
+          } else {
+            generatedReply = 'ได้ประมวลผลคำขอของคุณแล้ว';
+          }
+        }
+
+        assistantText = generatedReply || aiResponse.narrative || aiResponse.message || 'ขออภัย ไม่สามารถประมวลผลได้';
 
         assistantStructured = {
 

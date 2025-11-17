@@ -42,6 +42,13 @@ export const ReorderDestinationsSchema = z.object({
   })).min(1).describe('ลำดับใหม่ของสถานที่')
 });
 
+export const MoveDestinationSchema = z.object({
+  action: z.literal("MOVE_DESTINATION"),
+  destination_name: z.string().min(1).describe('ชื่อสถานที่ที่ต้องการย้าย'),
+  target_day: z.number().int().min(1).describe('วันที่ต้องการย้ายไป'),
+  target_position: z.number().int().min(1).optional().describe('ตำแหน่งที่ต้องการ (optional, จะเติมท้ายถ้าไม่ระบุ)')
+});
+
 export const UpdateTripInfoSchema = z.object({
   action: z.literal("UPDATE_TRIP_INFO"),
   days: z.number().int().min(1).optional().describe('จำนวนวัน'),
@@ -79,6 +86,7 @@ export const TripActionSchema = z.discriminatedUnion("action", [
   AddDestinationsSchema,
   RemoveDestinationsSchema,
   ReorderDestinationsSchema,
+  MoveDestinationSchema,
   UpdateTripInfoSchema,
   RecommendPlacesSchema,
   AskPersonalInfoSchema,
@@ -98,6 +106,7 @@ export type Destination = z.infer<typeof DestinationSchema>;
 export type AddDestinations = z.infer<typeof AddDestinationsSchema>;
 export type RemoveDestinations = z.infer<typeof RemoveDestinationsSchema>;
 export type ReorderDestinations = z.infer<typeof ReorderDestinationsSchema>;
+export type MoveDestination = z.infer<typeof MoveDestinationSchema>;
 export type UpdateTripInfo = z.infer<typeof UpdateTripInfoSchema>;
 export type RecommendPlaces = z.infer<typeof RecommendPlacesSchema>;
 export type AskPersonalInfo = z.infer<typeof AskPersonalInfoSchema>;

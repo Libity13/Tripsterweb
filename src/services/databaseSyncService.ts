@@ -35,11 +35,29 @@ export class DatabaseSyncService {
         allUpdates.push(...dayUpdates);
       }
 
-      // Use single batch update to avoid constraint conflicts
+      // Two-phase update to avoid unique constraint violations
       if (allUpdates.length > 0) {
-        // Update each destination individually but in sequence to avoid conflicts
+        // Phase 1: Set all order_index to temporary high values (1000+) to clear conflicts
+        console.log('🔄 Phase 1: Setting temporary order indices to avoid conflicts');
+        for (let i = 0; i < allUpdates.length; i++) {
+          const update = allUpdates[i];
+          const tempOrderIndex = 1000 + i; // Use high temporary values
+          
+          const { error } = await supabase
+            .from('destinations')
+            .update({ order_index: tempOrderIndex })
+            .eq('id', update.id)
+            .eq('trip_id', update.trip_id);
+
+          if (error) {
+            console.error('❌ Error setting temporary order index:', error);
+            throw error;
+          }
+        }
+
+        // Phase 2: Update to final values (visit_date and order_index)
+        console.log('🔄 Phase 2: Setting final order indices and visit_date');
         for (const update of allUpdates) {
-          // @ts-ignore - Supabase type inference issue
           const { error } = await supabase
             .from('destinations')
             .update({ 
@@ -185,6 +203,76 @@ export class DatabaseSyncService {
       await this.renormalizeOrderIndices(tripId);
     } catch (error) {
       console.error('❌ Error removing destination by name:', error);
+      throw error;
+    }
+  }
+
+  // Move destination to a different day
+  async moveDestination(destinationName: string, targetDay: number, tripId: string, targetPosition?: number): Promise<void> {
+    try {
+      console.log(`🔀 Moving destination "${destinationName}" to day ${targetDay}, position ${targetPosition || 'end'}`);
+      
+      // Find the destination
+      const { data: destination, error: fetchError } = await supabase
+        .from('destinations')
+        .select('*')
+        .eq('trip_id', tripId)
+        .eq('name', destinationName)
+        .single();
+
+      if (fetchError || !destination) {
+        console.error('❌ Destination not found:', destinationName);
+        throw new Error(`Destination "${destinationName}" not found`);
+      }
+
+      // Get all destinations
+      const allDestinations = await this.loadDestinations(tripId);
+      
+      // Remove this destination from its current position
+      const otherDestinations = allDestinations.filter(d => d.id !== destination.id);
+      
+      // Group by day
+      const destinationsByDay: Record<number, Destination[]> = {};
+      otherDestinations.forEach(dest => {
+        const day = dest.visit_date || 1;
+        if (!destinationsByDay[day]) destinationsByDay[day] = [];
+        destinationsByDay[day].push(dest);
+      });
+      
+      // Add to target day
+      if (!destinationsByDay[targetDay]) destinationsByDay[targetDay] = [];
+      
+      const newPosition = targetPosition !== undefined && targetPosition > 0 
+        ? Math.min(targetPosition - 1, destinationsByDay[targetDay].length) // Convert to 0-based index
+        : destinationsByDay[targetDay].length; // Add to end
+        
+      destinationsByDay[targetDay].splice(newPosition, 0, {
+        ...destination,
+        visit_date: targetDay
+      });
+      
+      // Rebuild array with correct order_index
+      const newDestinations: Destination[] = [];
+      Object.keys(destinationsByDay)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .forEach(day => {
+          const dayDests = destinationsByDay[day];
+          dayDests.forEach((dest, index) => {
+            newDestinations.push({
+              ...dest,
+              visit_date: day,
+              order_index: index + 1
+            });
+          });
+        });
+      
+      // Sync to database
+      await this.syncDestinationsOrder(newDestinations, tripId);
+      
+      console.log(`✅ Moved destination "${destinationName}" to day ${targetDay}`);
+    } catch (error) {
+      console.error('❌ Error moving destination:', error);
       throw error;
     }
   }
@@ -400,6 +488,13 @@ export class DatabaseSyncService {
               }
             } else {
               console.warn('⚠️ REMOVE_DESTINATIONS action has no destination_names, destinations, or context');
+            }
+            break;
+            
+          case 'MOVE_DESTINATION':
+            if (action.destination_name && action.target_day) {
+              console.log('🔀 Moving destination:', action.destination_name, 'to day', action.target_day);
+              await this.moveDestination(action.destination_name, action.target_day, tripId, action.target_position);
             }
             break;
             

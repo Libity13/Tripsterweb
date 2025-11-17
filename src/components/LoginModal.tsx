@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { User, Mail, Lock, MapPin, CheckCircle } from 'lucide-react';
+import { User, Mail, Lock, MapPin, CheckCircle, X } from 'lucide-react';
 import { authService } from '@/services/authService';
 import { toast } from 'sonner';
 
@@ -114,13 +114,30 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-md mx-4">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <Card 
+        className="w-full max-w-md mx-4 relative"
+        onClick={(e) => e.stopPropagation()}
+      >
         <CardHeader>
-          <CardTitle className="text-center flex items-center gap-2">
-            <User className="h-5 w-5" />
-            เข้าสู่ระบบเพื่อบันทึกแผนการเดินทาง
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              เข้าสู่ระบบเพื่อบันทึกแผนการเดินทาง
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-8 w-8 rounded-full hover:bg-gray-100"
+              aria-label="ปิด"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="signin" className="w-full">

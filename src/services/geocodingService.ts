@@ -36,14 +36,50 @@ export class GeocodingService {
       }
 
       // If not in cache, try Google Places API with multiple search strategies
-      const searchQueries = [
-        destinationName, // Original query
-        `${destinationName} สถานที่ท่องเที่ยว`, // Add tourist attraction
-        `${destinationName} ประเทศไทย`, // Add country
-        destinationName.split(' ')[0] // Try first word only
-      ];
+      const searchQueries: string[] = [];
+      
+      // 1. Try extracting Thai name from parentheses first (e.g., "The glass cafe(เดอะกลาสคาเฟ่)" → "เดอะกลาสคาเฟ่")
+      const thaiNameMatch = destinationName.match(/\(([^)]+)\)/);
+      if (thaiNameMatch && thaiNameMatch[1]) {
+        const thaiName = thaiNameMatch[1].trim();
+        if (thaiName.length >= 3) {
+          searchQueries.push(thaiName);
+          searchQueries.push(`${thaiName} ประเทศไทย`);
+        }
+      }
+      
+      // 2. Original query
+      searchQueries.push(destinationName);
+      
+      // 3. Add context
+      searchQueries.push(`${destinationName} สถานที่ท่องเที่ยว`);
+      searchQueries.push(`${destinationName} ประเทศไทย`);
+      
+      // 4. Try removing parentheses content (e.g., "The glass cafe(เดอะกลาสคาเฟ่)" → "The glass cafe")
+      const withoutParentheses = destinationName.replace(/\([^)]*\)/g, '').trim();
+      if (withoutParentheses !== destinationName && withoutParentheses.length >= 3) {
+        searchQueries.push(withoutParentheses);
+      }
+      
+      // 5. Try first significant word (skip common words like "The", "A", "An", and must be >= 3 chars)
+      const words = destinationName.split(' ').map(w => w.trim()).filter(w => w.length > 0);
+      const commonWords = ['the', 'a', 'an', 'at', 'in', 'on', 'of', 'to'];
+      const significantWord = words.find(word => 
+        word.length >= 3 && 
+        !commonWords.includes(word.toLowerCase()) &&
+        !/^[0-9]+$/.test(word) // Not just numbers
+      );
+      if (significantWord && significantWord !== destinationName) {
+        searchQueries.push(`${significantWord} ประเทศไทย`);
+      }
 
       for (const query of searchQueries) {
+        // Skip queries that are too short (less than 3 characters) or just numbers
+        if (query.length < 3 || /^[0-9\s]+$/.test(query)) {
+          console.log(`⏭️ Skipping too short or invalid query: "${query}"`);
+          continue;
+        }
+        
         try {
           console.log(`🔍 Searching with query: "${query}"`);
           
@@ -67,6 +103,25 @@ export class GeocodingService {
 
           if (data && data.results && data.results.length > 0) {
             const place = data.results[0];
+            
+            // Validate result: name should have some similarity with original query
+            const resultName = place.name.toLowerCase();
+            const originalName = destinationName.toLowerCase();
+            const thaiNameLower = thaiNameMatch?.[1]?.toLowerCase() || '';
+            
+            // Check if result is relevant
+            const isRelevant = 
+              resultName.includes(originalName) ||
+              originalName.includes(resultName) ||
+              (thaiNameLower && (resultName.includes(thaiNameLower) || thaiNameLower.includes(resultName))) ||
+              query === destinationName || // Trust original query
+              query.includes('ประเทศไทย'); // Trust queries with country context
+            
+            if (!isRelevant && query !== destinationName) {
+              console.warn(`⚠️ Result "${place.name}" doesn't seem relevant to query "${query}", trying next...`);
+              continue;
+            }
+            
             console.log(`✅ Found via Google Places with query "${query}":`, place);
             
             return {

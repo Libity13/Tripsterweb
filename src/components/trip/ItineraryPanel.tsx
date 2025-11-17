@@ -8,9 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { GripVertical, MapPin, Clock, DollarSign, Star, Trash2, Edit, Calendar, ExternalLink, Image, Plus, List, Grid3X3 } from 'lucide-react';
+import { GripVertical, MapPin, Clock, DollarSign, Star, Trash2, Edit, Calendar, ExternalLink, Image, Plus, List, Grid3X3, Navigation, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { databaseSyncService } from '@/services/databaseSyncService';
+import { routeOptimizationService } from '@/services/routeOptimizationService';
 import { supabase } from '@/lib/unifiedSupabaseClient';
 import { Destination } from '@/types/database';
 
@@ -313,10 +314,7 @@ const ItineraryPanel = ({
 
   // Calculate number of days
   const calculateDays = () => {
-    console.log('🔍 ItineraryPanel: Calculating days with:', { startDate, endDate });
-    
     if (!startDate || !endDate) {
-      console.log('🔍 No start/end date, using default 1 day');
       return 1;
     }
     
@@ -324,15 +322,6 @@ const ItineraryPanel = ({
     const end = new Date(endDate);
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Remove +1 to get correct day count
-    
-    console.log('🔍 Calculated days:', { 
-      startDate, 
-      endDate, 
-      start: start.toISOString(), 
-      end: end.toISOString(), 
-      diffTime, 
-      diffDays 
-    });
     
     return Math.max(1, diffDays);
   };
@@ -353,22 +342,15 @@ const ItineraryPanel = ({
       .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
   };
 
-  // Debug: Log destinations and days
-  console.log('🔍 ItineraryPanel Debug:', {
-    totalDestinations: destinations.length,
-    totalDays,
-    startDate,
-    endDate,
-    destinations: destinations.map((d, index) => ({ 
-      id: d.id, 
-      name: d.name, 
-      order_index: d.order_index,
-      description: d.description,
-      visit_duration: d.visit_duration,
-      estimated_cost: d.estimated_cost,
-      photos: d.photos
-    }))
-  });
+  // Debug: Log destinations and days (only in development)
+  if (import.meta.env.DEV) {
+    console.log('🔍 ItineraryPanel Debug:', {
+      totalDestinations: destinations.length,
+      totalDays,
+      startDate,
+      endDate
+    });
+  }
 
   // Calculate day-specific stats
   const getDayStats = (day: number) => {
@@ -387,7 +369,6 @@ const ItineraryPanel = ({
 
   const handleDragStart = (event: any) => {
     setActiveId(event.active.id);
-    console.log('🔄 Drag started:', event.active.id);
   };
 
   const handleDragEnd = async (event: any) => {
@@ -396,26 +377,83 @@ const ItineraryPanel = ({
 
     if (!over || active.id === over.id) return;
 
+    const draggedDestination = destinations.find(item => item.id === active.id);
+    const targetDestination = destinations.find(item => item.id === over.id);
+    
+    if (!draggedDestination || !targetDestination) return;
+    
+    // Get day information
+    const draggedDay = draggedDestination.visit_date || 1;
+    const targetDay = targetDestination.visit_date || 1;
+    
+    // Determine if moving across days
+    const movedToDifferentDay = draggedDay !== targetDay;
+    
+    if (import.meta.env.DEV) {
+      console.log('🔄 Drag & Drop:', {
+        destination: draggedDestination.name,
+        fromDay: draggedDay,
+        toDay: targetDay,
+        crossDay: movedToDifferentDay
+      });
+    }
+    
+    // Find positions in the full destinations array
     const oldIndex = destinations.findIndex(item => item.id === active.id);
     const newIndex = destinations.findIndex(item => item.id === over.id);
     
     if (oldIndex === -1 || newIndex === -1) return;
     
-    console.log('🔄 Drag & Drop:', {
-      from: oldIndex,
-      to: newIndex,
-      destination: destinations[oldIndex]?.name
+    // 1. Move the item in the array
+    const reorderedDestinations = arrayMove(destinations, oldIndex, newIndex);
+    
+    // 2. Update visit_date if moving to a different day
+    if (movedToDifferentDay) {
+      const movedDestIndex = reorderedDestinations.findIndex(d => d.id === active.id);
+      if (movedDestIndex !== -1) {
+        reorderedDestinations[movedDestIndex] = {
+          ...reorderedDestinations[movedDestIndex],
+          visit_date: targetDay
+        };
+      }
+    }
+    
+    // 3. Group destinations by day and renormalize order_index
+    const destinationsByDay: Record<number, Destination[]> = {};
+    reorderedDestinations.forEach(dest => {
+      const day = dest.visit_date || 1;
+      if (!destinationsByDay[day]) destinationsByDay[day] = [];
+      destinationsByDay[day].push(dest);
     });
     
-    // Apply optimistic update
-    const newDestinations = arrayMove(destinations, oldIndex, newIndex);
+    // 4. Rebuild array with correct order_index for each day
+    const newDestinations: Destination[] = [];
+    Object.keys(destinationsByDay)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .forEach(day => {
+        const dayDests = destinationsByDay[day];
+        dayDests.forEach((dest, index) => {
+          newDestinations.push({
+            ...dest,
+            visit_date: day,
+            order_index: index + 1
+          });
+        });
+      });
+    
+    // 5. Update local state (optimistic update)
     onUpdate(newDestinations);
     
-    // Sync to database if tripId is available
+    // 6. Sync to database if tripId is available
     if (tripId) {
       try {
         await databaseSyncService.syncDestinationsOrder(newDestinations, tripId);
-        toast.success(`ย้าย ${destinations[oldIndex]?.name} ไปตำแหน่งใหม่แล้ว`);
+        if (movedToDifferentDay) {
+          toast.success(`ย้าย ${draggedDestination.name} ไปวันที่ ${targetDay} แล้ว`);
+        } else {
+          toast.success(`ย้าย ${draggedDestination.name} ไปตำแหน่งใหม่แล้ว`);
+        }
       } catch (error) {
         console.error('❌ Error syncing destinations order:', error);
         toast.error('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลง');
@@ -424,7 +462,11 @@ const ItineraryPanel = ({
         onUpdate(destinations);
       }
     } else {
-      toast.success(`ย้าย ${destinations[oldIndex]?.name} ไปตำแหน่งใหม่แล้ว`);
+      if (movedToDifferentDay) {
+        toast.success(`ย้าย ${draggedDestination.name} ไปวันที่ ${targetDay} แล้ว`);
+      } else {
+        toast.success(`ย้าย ${draggedDestination.name} ไปตำแหน่งใหม่แล้ว`);
+      }
     }
   };
 
@@ -445,6 +487,64 @@ const ItineraryPanel = ({
   const handleClick = (destination: Destination) => {
     if (onDestinationClick) {
       onDestinationClick(destination);
+    }
+  };
+
+  // Handle route optimization for a specific day
+  const handleOptimizeRoute = async (day: number) => {
+    const dayDestinations = getDestinationsForDay(day);
+    
+    if (dayDestinations.length < 2) {
+      toast.info('ต้องมีอย่างน้อย 2 สถานที่เพื่อทำการ optimize');
+      return;
+    }
+
+    // Check if destinations have coordinates
+    const destinationsWithCoords = dayDestinations.filter(d => d.latitude && d.longitude);
+    if (destinationsWithCoords.length < 2) {
+      toast.warning('สถานที่ส่วนใหญ่ยังไม่มีพิกัด ไม่สามารถ optimize ได้');
+      return;
+    }
+
+    try {
+      toast.loading('กำลัง optimize เส้นทาง... (กำลังคำนวณระยะทางจริง)', { id: 'optimize-route' });
+      
+      // Use smart optimization with real Google Directions API distances
+      const optimized = await routeOptimizationService.smartOptimizeRouteReal(dayDestinations);
+      
+      // Update order_index for optimized destinations
+      const updatedDayDestinations = optimized.destinations.map((dest, index) => ({
+        ...dest,
+        order_index: index + 1
+      }));
+      
+      // Merge with other days
+      const otherDaysDestinations = destinations.filter(d => (d.visit_date || 1) !== day);
+      const newDestinations = [...otherDaysDestinations, ...updatedDayDestinations].sort((a, b) => {
+        const dayA = a.visit_date || 1;
+        const dayB = b.visit_date || 1;
+        if (dayA !== dayB) return dayA - dayB;
+        return (a.order_index || 0) - (b.order_index || 0);
+      });
+      
+      onUpdate(newDestinations);
+      
+      // Sync to database if tripId is available
+      if (tripId) {
+        await databaseSyncService.syncDestinationsOrder(newDestinations, tripId);
+      }
+      
+      const distanceInfo = optimized.useRealDistances 
+        ? `ระยะทางจริง ${optimized.improvements.savedDistance.toFixed(1)} km`
+        : `ประมาณ ${optimized.improvements.savedDistance.toFixed(1)} km`;
+      
+      toast.success(
+        `✨ Optimize สำเร็จ! ประหยัด${distanceInfo} (${Math.round(optimized.improvements.savedTime)} นาที)`,
+        { id: 'optimize-route', duration: 5000 }
+      );
+    } catch (error) {
+      console.error('❌ Error optimizing route:', error);
+      toast.error('เกิดข้อผิดพลาดในการ optimize เส้นทาง', { id: 'optimize-route' });
     }
   };
 
@@ -642,45 +742,91 @@ const ItineraryPanel = ({
             })}
           </Tabs>
         ) : (
-          // Grid View (Original)
-          <Tabs value={selectedDay.toString()} onValueChange={(value) => {
-            const newDay = parseInt(value);
-            setSelectedDay(newDay);
-            onSelectedDayChange?.(newDay);
-          }} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-3">
-              {Array.from({ length: totalDays }, (_, i) => {
-                const dayStats = getDayStats(i + 1);
-                return (
-                  <TabsTrigger key={i + 1} value={(i + 1).toString()} className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    <span>Day {i + 1}</span>
-                    {dayStats.duration > 0 && (
-                      <div className="ml-1 text-xs text-gray-500">
-                        ({Math.round(dayStats.duration / 60)}h)
-                      </div>
-                    )}
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-            
-            {Array.from({ length: totalDays }, (_, i) => {
-              const dayDestinations = getDestinationsForDay(i + 1);
-              return (
-                <TabsContent key={i + 1} value={(i + 1).toString()} className="flex-1 overflow-hidden">
-                  <div className="h-full overflow-y-auto">
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragStart={handleDragStart}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext
-                        items={dayDestinations.map(dest => dest.id)}
-                        strategy={verticalListSortingStrategy}
+          // Grid View (Original) - DndContext wraps all tabs to enable cross-day dragging
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={destinations.map(dest => dest.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="h-full flex flex-col">
+                {/* Custom Tab List */}
+                <div className="grid w-full grid-cols-3 gap-1 mb-4 bg-gray-100 p-1 rounded-lg">
+                  {Array.from({ length: totalDays }, (_, i) => {
+                    const dayStats = getDayStats(i + 1);
+                    const isActive = selectedDay === i + 1;
+                    return (
+                      <button
+                        key={i + 1}
+                        onClick={() => {
+                          setSelectedDay(i + 1);
+                          onSelectedDayChange?.(i + 1);
+                        }}
+                        className={`flex items-center justify-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'bg-transparent text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <Calendar className="h-3 w-3" />
+                        <span>Day {i + 1}</span>
+                        {dayStats.duration > 0 && (
+                          <div className="ml-1 text-xs text-gray-500">
+                            ({Math.round(dayStats.duration / 60)}h)
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {/* All tabs render at once, visibility controlled by CSS */}
+                <div className="flex-1 overflow-hidden relative">
+                  {Array.from({ length: totalDays }, (_, i) => {
+                    const dayDestinations = getDestinationsForDay(i + 1);
+                    const isActive = selectedDay === i + 1;
+                    const dayStats = getDayStats(i + 1);
+                    const totalDistance = routeOptimizationService.calculateRouteDistance(dayDestinations);
+                    
+                    return (
+                      <div
+                        key={i + 1}
+                        className={`h-full overflow-y-auto absolute inset-0 transition-opacity ${
+                          isActive ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none z-0'
+                        }`}
                       >
                         <div className="space-y-2">
+                          {/* Route Stats Banner */}
+                          {dayDestinations.length >= 2 && totalDistance > 0 && (
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 mb-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <Navigation className="h-4 w-4 text-blue-600" />
+                                  <div className="text-sm">
+                                    <span className="font-medium text-gray-900">ระยะทางรวม:</span>{' '}
+                                    <span className="text-blue-600 font-semibold">{totalDistance.toFixed(1)} km</span>
+                                    <span className="text-gray-500 text-xs ml-2">
+                                      (~{Math.round((totalDistance / 40) * 60)} นาที)
+                                    </span>
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOptimizeRoute(i + 1)}
+                                  className="h-8 px-3 bg-white hover:bg-blue-50 border-blue-300 text-blue-700 hover:text-blue-800"
+                                >
+                                  <TrendingDown className="h-3 w-3 mr-1.5" />
+                                  Optimize
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          
                           {dayDestinations.length === 0 ? (
                             <div className="text-center py-4 text-gray-400">
                               <p className="text-sm">No destinations for Day {i + 1}</p>
@@ -704,6 +850,29 @@ const ItineraryPanel = ({
                                 <div className="absolute -left-2 -top-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium z-10">
                                   {index + 1}
                                 </div>
+                                
+                                {/* Distance to next destination */}
+                                {index < dayDestinations.length - 1 && (
+                                  <div className="absolute -bottom-3 left-4 right-4 z-0">
+                                    <div className="flex items-center justify-center gap-1 text-xs text-gray-400">
+                                      {destination.latitude && destination.longitude && 
+                                       dayDestinations[index + 1].latitude && dayDestinations[index + 1].longitude && (
+                                        <>
+                                          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+                                          <span className="bg-white px-2 py-0.5 rounded-full border border-gray-200">
+                                            {routeOptimizationService['calculateDistance'](
+                                              destination.latitude,
+                                              destination.longitude,
+                                              dayDestinations[index + 1].latitude!,
+                                              dayDestinations[index + 1].longitude!
+                                            ).toFixed(1)} km
+                                          </span>
+                                          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                                 
                                 <SortableItem
                                   destination={destination}
@@ -730,20 +899,20 @@ const ItineraryPanel = ({
                             </div>
                           )}
                         </div>
-                      </SortableContext>
-                    </DndContext>
-                  </div>
-                </TabsContent>
-              );
-            })}
-          </Tabs>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
 
         {/* Instructions */}
         {destinations.length > 0 && (
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-xs text-blue-700">
-              💡 Drag destinations to reorder your itinerary
+              💡 Drag destinations to reorder your itinerary (you can now drag across days!)
             </p>
           </div>
         )}
