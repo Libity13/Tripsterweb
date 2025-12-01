@@ -17,17 +17,24 @@ import { databaseSyncService } from '@/services/databaseSyncService';
 import { authService } from '@/services/authService';
 import { supabase } from '@/lib/unifiedSupabaseClient';
 import LoginModal from '@/components/LoginModal';
+import TripStatusButton from '@/components/trip/TripStatusButton';
+import ShareDialog from '@/components/trip/ShareDialog';
+import ExportPDFButton from '@/components/trip/ExportPDFButton';
+import { TripStatusType } from '@/types/tripStatus';
 import { toast } from 'sonner';
+import { useLanguage } from '@/hooks/useLanguage';
 
 // Types are now imported from tripService
 
 const TripPlanner = () => {
   const { id } = useParams();
+  const { language, t } = useLanguage();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPlaceSearch, setShowPlaceSearch] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
   const [selectedDay, setSelectedDay] = useState<number>(1);
   const [viewMode, setViewMode] = useState<'grid' | 'timeline'>('grid');
   const [user, setUser] = useState<any>(null);
@@ -163,8 +170,12 @@ const TripPlanner = () => {
   };
 
   const handleShareTrip = () => {
-    navigator.clipboard.writeText(window.location.href);
-    toast.success('คัดลอกลิงก์แล้ว!');
+    if (!user) {
+      toast.error(language === 'th' ? 'กรุณาเข้าสู่ระบบก่อนแชร์' : 'Please sign in to share');
+      setShowLoginModal(true);
+      return;
+    }
+    setShowShareDialog(true);
   };
 
   const handleExportPDF = () => {
@@ -274,8 +285,24 @@ const TripPlanner = () => {
         <div className="px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div>
+              <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold text-gray-900">{trip.title}</h1>
+                <TripStatusButton
+                  currentStatus={(trip.status as TripStatusType) || 'planning'}
+                  onStatusChange={async (newStatus) => {
+                    try {
+                      await tripService.updateTripStatus(trip.id, newStatus);
+                      setTrip(prev => prev ? { ...prev, status: newStatus } : prev);
+                      toast.success(
+                        newStatus === 'confirmed' ? '✅ ยืนยันแผนเรียบร้อย' :
+                        newStatus === 'completed' ? '🎉 เสร็จสิ้นแล้ว!' :
+                        'อัพเดท status เรียบร้อย'
+                      );
+                    } catch (error) {
+                      toast.error('ไม่สามารถอัพเดท status ได้');
+                    }
+                  }}
+                />
               </div>
               {user && (
                 <div className="flex items-center gap-2 bg-gray-50 rounded-full px-3 py-2">
@@ -301,10 +328,7 @@ const TripPlanner = () => {
                 <Share2 className="h-4 w-4 mr-2" />
                 Share
               </Button>
-              <Button variant="outline" onClick={handleExportPDF} size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export PDF
-              </Button>
+              <ExportPDFButton trip={trip} />
               {user ? (
                 <Button onClick={handleSaveTrip} size="sm">
                   บันทึก
@@ -435,6 +459,14 @@ const TripPlanner = () => {
         onClose={() => setShowPlaceSearch(false)}
         onSelectPlace={handleSelectPlace}
         day={selectedDay}
+      />
+
+      {/* Share Dialog */}
+      <ShareDialog
+        isOpen={showShareDialog}
+        onClose={() => setShowShareDialog(false)}
+        tripId={trip?.id || ''}
+        tripTitle={trip?.title || ''}
       />
     </div>
   );

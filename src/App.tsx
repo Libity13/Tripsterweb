@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import Chat from "./pages/Chat";
 import TripPlanner from "./pages/TripPlanner";
 import MyTrips from "./pages/MyTrips";
+import SharedTrip from "./pages/SharedTrip";
 import AuthCallback from "./pages/AuthCallback";
 import NotFound from "./pages/NotFound";
 
@@ -49,6 +50,9 @@ const App = () => {
               <Routes>
                 {/* Auth Callback needs to be at root to handle OAuth redirects correctly */}
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                
+                {/* Shared Trip - Public access (no language prefix for shorter URLs) */}
+                <Route path="/share/:token" element={<SharedTrip />} />
                 
                 {/* Language Routes */}
                 <Route path="/:lang" element={<Outlet />}>

@@ -1,14 +1,25 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { MapPin, Calendar, Plus, ArrowLeft, LogIn } from "lucide-react";
+import { MapPin, Calendar, Plus, ArrowLeft, LogIn, MoreVertical, Trash2, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { tripService, type Trip } from "@/services/tripService";
 import { authService } from "@/services/authService";
 import { useLanguage, LanguageSwitcher } from "@/hooks/useLanguage";
 import { UserMenu } from "@/components/UserMenu";
 import LoginModal from "@/components/LoginModal";
+import DeleteTripDialog from "@/components/trip/DeleteTripDialog";
+import TripStatusBadge from "@/components/trip/TripStatusBadge";
+import { TripStatusType } from "@/types/tripStatus";
+import { toast } from "sonner";
 
 const MyTrips = () => {
   const [myTrips, setMyTrips] = useState<Trip[]>([]);
@@ -16,6 +27,9 @@ const MyTrips = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [tripToDelete, setTripToDelete] = useState<Trip | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const navigate = useNavigate();
   const { language, t } = useLanguage();
@@ -78,6 +92,35 @@ const MyTrips = () => {
     window.location.reload();
   };
 
+  const handleDeleteClick = (e: React.MouseEvent, trip: Trip) => {
+    e.stopPropagation(); // Prevent card click
+    setTripToDelete(trip);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!tripToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await tripService.deleteTrip(tripToDelete.id);
+      setMyTrips(prev => prev.filter(t => t.id !== tripToDelete.id));
+      toast.success(t('trip.deleteSuccess'));
+      setDeleteDialogOpen(false);
+      setTripToDelete(null);
+    } catch (error) {
+      console.error('Delete trip error:', error);
+      toast.error(t('trip.deleteError'));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setTripToDelete(null);
+  };
+
   // If not authenticated and not loading, show login prompt state
   if (!loading && !isAuthenticated) {
     return (
@@ -101,6 +144,13 @@ const MyTrips = () => {
           isOpen={showLoginModal}
           onClose={() => setShowLoginModal(false)}
           onSuccess={handleLoginSuccess}
+        />
+        <DeleteTripDialog
+          isOpen={deleteDialogOpen}
+          onClose={handleDeleteCancel}
+          onConfirm={handleDeleteConfirm}
+          tripTitle={tripToDelete?.title || ''}
+          isDeleting={isDeleting}
         />
       </div>
     );
@@ -151,15 +201,40 @@ const MyTrips = () => {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {myTrips.map((trip) => (
-              <Card key={trip.id} className="hover:shadow-lg transition-all cursor-pointer group" onClick={() => handleViewTrip(trip.id)}>
+              <Card key={trip.id} className="hover:shadow-lg transition-all cursor-pointer group relative" onClick={() => handleViewTrip(trip.id)}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
+                    <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors pr-8">
                       {trip.title}
                     </CardTitle>
-                    <Badge variant={trip.destinations.length > 0 ? 'default' : 'secondary'}>
-                      {trip.destinations.length > 0 ? t('myTrips.status.hasPlaces') : t('myTrips.status.empty')}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <TripStatusBadge 
+                        status={(trip.status as TripStatusType) || 'planning'} 
+                        size="sm"
+                      />
+                      {/* Actions Menu */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem onClick={() => handleViewTrip(trip.id)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            {t('trip.edit')}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={(e) => handleDeleteClick(e as any, trip)}
+                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            {t('trip.delete')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -203,6 +278,15 @@ const MyTrips = () => {
           </div>
         )}
       </main>
+
+      {/* Delete Trip Dialog */}
+      <DeleteTripDialog
+        isOpen={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        tripTitle={tripToDelete?.title || ''}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

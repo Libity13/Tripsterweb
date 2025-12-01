@@ -354,19 +354,43 @@ export const tripService = {
     console.log('✅ tripService.updateTripInfo: Successfully updated trip info');
   },
 
-  // Get user trips
+  // Get user trips - FIXED: Filter by user_id or guest_id
   async getUserTrips(): Promise<Trip[]> {
-    const { data, error } = await supabase
+    // Get current user or guest ID
+    const currentUser = await authService.getCurrentUser();
+    const isAuthenticated = !!currentUser;
+    const guestId = authService.getGuestId();
+    
+    let query = supabase
       .from('trips')
       .select(`
         *,
         destinations (*)
       `)
       .order('created_at', { ascending: false });
+    
+    // ✅ SECURITY FIX: Filter by user_id or guest_id
+    if (isAuthenticated) {
+      // Logged in user: show only their trips
+      query = query.eq('user_id', currentUser.id);
+      console.log('🔐 getUserTrips: Filtering by user_id:', currentUser.id);
+    } else if (guestId) {
+      // Guest user: show only their guest trips
+      query = query.eq('guest_id', guestId);
+      console.log('🔐 getUserTrips: Filtering by guest_id:', guestId);
+    } else {
+      // No user and no guest ID: return empty array
+      console.log('🔐 getUserTrips: No user or guest ID, returning empty array');
+      return [];
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(`Failed to load trips: ${error.message}`);
     }
+
+    console.log(`✅ getUserTrips: Found ${data?.length || 0} trips`);
 
     return (data || []).map(trip => ({
       ...trip,
@@ -386,5 +410,77 @@ export const tripService = {
         photos: dest.photos || []
       }))
     })) as Trip[];
+  },
+
+  // Update trip status
+  async updateTripStatus(tripId: string, status: string): Promise<void> {
+    console.log('📊 tripService.updateTripStatus:', tripId, status);
+    
+    const { error } = await supabase
+      .from('trips')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', tripId);
+    
+    if (error) {
+      console.error('❌ tripService.updateTripStatus: Error:', error);
+      throw new Error(`Failed to update trip status: ${error.message}`);
+    }
+    
+    console.log('✅ tripService.updateTripStatus: Success');
+  },
+
+  // Delete trip and all related data
+  async deleteTrip(tripId: string): Promise<void> {
+    console.log('🗑️ tripService.deleteTrip: Deleting trip:', tripId);
+    
+    // Get current user to verify ownership
+    const currentUser = await authService.getCurrentUser();
+    const guestId = authService.getGuestId();
+    
+    // First, delete all destinations
+    const { error: destError } = await supabase
+      .from('destinations')
+      .delete()
+      .eq('trip_id', tripId);
+    
+    if (destError) {
+      console.error('❌ tripService.deleteTrip: Error deleting destinations:', destError);
+      throw new Error(`Failed to delete destinations: ${destError.message}`);
+    }
+    
+    // Then, delete all chat messages
+    const { error: chatError } = await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('trip_id', tripId);
+    
+    if (chatError) {
+      console.warn('⚠️ tripService.deleteTrip: Error deleting chat messages:', chatError);
+      // Don't throw, just warn - chat messages might not exist
+    }
+    
+    // Finally, delete the trip itself
+    let deleteQuery = supabase
+      .from('trips')
+      .delete()
+      .eq('id', tripId);
+    
+    // ✅ SECURITY: Only allow deleting own trips
+    if (currentUser) {
+      deleteQuery = deleteQuery.eq('user_id', currentUser.id);
+    } else if (guestId) {
+      deleteQuery = deleteQuery.eq('guest_id', guestId);
+    } else {
+      throw new Error('Unauthorized: Cannot delete trip without authentication');
+    }
+    
+    const { error } = await deleteQuery;
+    
+    if (error) {
+      console.error('❌ tripService.deleteTrip: Error:', error);
+      throw new Error(`Failed to delete trip: ${error.message}`);
+    }
+    
+    console.log('✅ tripService.deleteTrip: Successfully deleted trip');
   }
 };
