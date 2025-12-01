@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { User, Mail, Lock, MapPin, CheckCircle, X } from 'lucide-react';
 import { authService } from '@/services/authService';
 import { toast } from 'sonner';
+import { useLanguage } from '@/hooks/useLanguage';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ interface LoginModalProps {
 }
 
 const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,16 +38,16 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
         await authService.migrateGuestTrips(guestId, user.id);
         authService.clearGuestId();
         
-        toast.success('เข้าสู่ระบบสำเร็จ! แผนการเดินทางของคุณถูกย้ายมาแล้ว');
+        toast.success(t('loginModal.successSignIn'));
         onSuccess();
         onClose();
       }
     } catch (error) {
       console.error('Sign in error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่';
+      const errorMessage = error instanceof Error ? error.message : t('loginModal.errorSignIn');
       
       // Show resend confirmation option if email not confirmed
-      if (errorMessage.includes('ยืนยันอีเมล')) {
+      if (errorMessage.includes('ยืนยันอีเมล') || errorMessage.includes('verify')) {
         setShowResendConfirmation(true);
       }
       
@@ -61,11 +63,11 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
     try {
       setLoading(true);
       await authService.resendConfirmation(email);
-      toast.success('ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบอีเมลของคุณ');
+      toast.success(t('loginModal.successResend'));
       setShowResendConfirmation(false);
     } catch (error) {
       console.error('Resend confirmation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'ส่งอีเมลยืนยันไม่สำเร็จ';
+      const errorMessage = error instanceof Error ? error.message : t('loginModal.errorResend');
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -86,13 +88,13 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
         await authService.migrateGuestTrips(guestId, user.id);
         authService.clearGuestId();
         
-        toast.success('สมัครสมาชิกสำเร็จ! แผนการเดินทางของคุณถูกย้ายมาแล้ว');
+        toast.success(t('loginModal.successSignUp'));
         onSuccess();
         onClose();
       }
     } catch (error) {
       console.error('Sign up error:', error);
-      toast.error('สมัครสมาชิกไม่สำเร็จ กรุณาลองใหม่');
+      toast.error(t('loginModal.errorSignUp'));
     } finally {
       setLoading(false);
     }
@@ -105,7 +107,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
       // Google OAuth will redirect, so we don't need to handle success here
     } catch (error) {
       console.error('Google Sign In error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Google Sign In ไม่สำเร็จ';
+      const errorMessage = error instanceof Error ? error.message : t('loginModal.errorGoogle');
       toast.error(errorMessage);
       setLoading(false);
     }
@@ -126,14 +128,14 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
-              เข้าสู่ระบบเพื่อบันทึกแผนการเดินทาง
+              {t('loginModal.title')}
             </CardTitle>
             <Button
               variant="ghost"
               size="icon"
               onClick={onClose}
               className="h-8 w-8 rounded-full hover:bg-gray-100"
-              aria-label="ปิด"
+              aria-label={t('loginModal.close')}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -142,14 +144,14 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
         <CardContent>
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">เข้าสู่ระบบ</TabsTrigger>
-              <TabsTrigger value="signup">สมัครสมาชิก</TabsTrigger>
+              <TabsTrigger value="signin">{t('loginModal.tabSignIn')}</TabsTrigger>
+              <TabsTrigger value="signup">{t('loginModal.tabSignUp')}</TabsTrigger>
             </TabsList>
             
             <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="signin-email">อีเมล</Label>
+                  <Label htmlFor="signin-email">{t('loginModal.email')}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
@@ -165,13 +167,13 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="signin-password">รหัสผ่าน</Label>
+                  <Label htmlFor="signin-password">{t('loginModal.password')}</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
                       id="signin-password"
                       type="password"
-                      placeholder="รหัสผ่านของคุณ"
+                      placeholder={t('loginModal.passwordPlaceholder')}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="pl-10"
@@ -181,7 +183,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                 </div>
                 
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+                  {loading ? t('loginModal.signInLoading') : t('loginModal.signInButton')}
                 </Button>
                 
                 <div className="relative">
@@ -189,7 +191,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                     <span className="w-full border-t" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-2 text-muted-foreground">หรือ</span>
+                    <span className="bg-white px-2 text-muted-foreground">{t('loginModal.or')}</span>
                   </div>
                 </div>
                 
@@ -218,13 +220,13 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                       d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                     />
                   </svg>
-                  {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบด้วย Google'}
+                  {loading ? t('loginModal.signInLoading') : t('loginModal.googleSignIn')}
                 </Button>
                 
                 {showResendConfirmation && (
                   <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                     <p className="text-sm text-yellow-800 mb-2">
-                      กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ
+                      {t('loginModal.confirmEmail')}
                     </p>
                     <Button 
                       type="button" 
@@ -234,7 +236,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                       disabled={loading}
                       className="w-full"
                     >
-                      {loading ? 'กำลังส่ง...' : 'ส่งอีเมลยืนยันใหม่'}
+                      {loading ? t('loginModal.resendLoading') : t('loginModal.resendConfirmation')}
                     </Button>
                   </div>
                 )}
@@ -244,13 +246,13 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="signup-name">ชื่อแสดง</Label>
+                  <Label htmlFor="signup-name">{t('loginModal.displayName')}</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
                       id="signup-name"
                       type="text"
-                      placeholder="ชื่อของคุณ"
+                      placeholder={t('loginModal.displayNamePlaceholder')}
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       className="pl-10"
@@ -260,7 +262,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="signup-email">อีเมล</Label>
+                  <Label htmlFor="signup-email">{t('loginModal.email')}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
@@ -276,13 +278,13 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="signup-password">รหัสผ่าน</Label>
+                  <Label htmlFor="signup-password">{t('loginModal.password')}</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
                       id="signup-password"
                       type="password"
-                      placeholder="รหัสผ่านของคุณ"
+                      placeholder={t('loginModal.passwordPlaceholder')}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="pl-10"
@@ -292,7 +294,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                 </div>
                 
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'กำลังสมัครสมาชิก...' : 'สมัครสมาชิก'}
+                  {loading ? t('loginModal.signUpLoading') : t('loginModal.signUpButton')}
                 </Button>
                 
                 <div className="relative">
@@ -300,7 +302,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                     <span className="w-full border-t" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-2 text-muted-foreground">หรือ</span>
+                    <span className="bg-white px-2 text-muted-foreground">{t('loginModal.or')}</span>
                   </div>
                 </div>
                 
@@ -329,7 +331,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                       d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                     />
                   </svg>
-                  {loading ? 'กำลังสมัครสมาชิก...' : 'สมัครสมาชิกด้วย Google'}
+                  {loading ? t('loginModal.signUpLoading') : t('loginModal.googleSignUp')}
                 </Button>
               </form>
             </TabsContent>
@@ -339,18 +341,18 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
             <div className="flex items-start gap-3">
               <CheckCircle className="h-5 w-5 text-blue-500 mt-0.5" />
               <div className="text-sm text-blue-700">
-                <p className="font-medium">แผนการเดินทางของคุณจะถูกย้ายมา</p>
-                <p className="text-blue-600">ไม่ต้องกังวล แผนที่สร้างไว้จะไม่หายไป</p>
+                <p className="font-medium">{t('loginModal.migrationNotice')}</p>
+                <p className="text-blue-600">{t('loginModal.migrationDetail')}</p>
               </div>
             </div>
           </div>
           
           <div className="mt-4 flex gap-2">
             <Button variant="outline" className="flex-1" onClick={onClose}>
-              ข้าม
+              {t('loginModal.skip')}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => window.location.reload()}>
-              รีเฟรช
+              {t('loginModal.refresh')}
             </Button>
           </div>
         </CardContent>

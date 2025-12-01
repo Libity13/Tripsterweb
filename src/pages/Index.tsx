@@ -13,6 +13,9 @@ import { Label } from "@/components/ui/label";
 import LoginModal from "@/components/LoginModal";
 import { toast } from "sonner";
 import heroBg from "@/assets/hero-bg.jpg";
+import { useLanguage, LanguageSwitcher } from "@/hooks/useLanguage";
+
+import { UserMenu } from "@/components/UserMenu";
 
 const Index = () => {
   const [input, setInput] = useState("");
@@ -23,29 +26,40 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const navigate = useNavigate();
-  
+  const { language, t } = useLanguage();
+  const dateLocale = language === 'th' ? 'th-TH' : 'en-US';
+
   // Get AI config from context
   const { config: aiConfig, updateProvider, updateModel, getAvailableModels } = useAIConfig();
 
+  // Handle profile update (refresh user data)
+  const handleProfileUpdated = async () => {
+     const currentUser = await authService.getCurrentUser();
+     setUser(currentUser);
+  };
+
+  // Compute display name (moved from old code to fix ReferenceError)
+  const displayName = user?.user_metadata?.display_name || user?.email || (language === 'th' ? 'ผู้ใช้' : 'Traveler');
+
   const quickActions = [
-    { icon: MapPin, text: "หาสถานที่ท่องเที่ยว", color: "bg-cyan-500" },
-    { icon: Plane, text: "วางแผนการเดินทาง", color: "bg-teal-500" },
-    { icon: Palmtree, text: "ท่องเที่ยวชายหาด", color: "bg-cyan-600" },
-    { icon: Mountain, text: "ผจญภัยภูเขา", color: "bg-teal-600" },
+    { icon: MapPin, text: t('quickActions.findPlaces'), color: "bg-cyan-500" },
+    { icon: Plane, text: t('quickActions.planTrip'), color: "bg-teal-500" },
+    { icon: Palmtree, text: t('quickActions.beachTrip'), color: "bg-cyan-600" },
+    { icon: Mountain, text: t('quickActions.mountainAdventure'), color: "bg-teal-600" },
   ];
 
   const examplePrompts = [
-    "วางแผน 7 วันในกรุงเทพและเชียงใหม่",
-    "แนะนำการเดินทางงบประหยัดที่ภูเก็ต",
-    "เที่ยวโรแมนติก 5 วันที่ญี่ปุ่น",
-    "ท่องเที่ยวครอบครัวที่เกาหลีใต้",
+    t('examplePrompts.bangkokChiangMai'),
+    t('examplePrompts.phuketBudget'),
+    t('examplePrompts.japanRomantic'),
+    t('examplePrompts.koreaFamily'),
   ];
 
   const handleStartPlanning = () => {
     if (input.trim()) {
-      navigate("/chat", { state: { initialMessage: input } });
+      navigate(`/${language}/chat`, { state: { initialMessage: input } });
     } else {
-      navigate("/chat");
+      navigate(`/${language}/chat`);
     }
   };
 
@@ -54,7 +68,7 @@ const Index = () => {
   };
 
   const handleExamplePrompt = (prompt: string) => {
-    navigate("/chat", { state: { initialMessage: prompt } });
+    navigate(`/${language}/chat`, { state: { initialMessage: prompt } });
   };
 
   // Check authentication status and load user trips
@@ -89,7 +103,7 @@ const Index = () => {
   }, []);
 
   const handleViewTrip = (tripId: string) => {
-    navigate(`/trip/${tripId}`);
+    navigate(`/${language}/trip/${tripId}`);
   };
 
   const handleLogin = () => {
@@ -143,8 +157,12 @@ const Index = () => {
           <div className="container mx-auto flex justify-between items-center">
             {/* Logo/Brand */}
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-full bg-primary/20 backdrop-blur-md">
-                <Sparkles className="w-8 h-8 text-primary-foreground" />
+              <div className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center overflow-hidden border border-white/20">
+                <img 
+                  src="/TripsterIcon.png" 
+                  alt="Tripster Logo" 
+                  className="w-full h-full object-cover" 
+                />
               </div>
               <h1 className="text-2xl md:text-3xl font-bold text-white">
                 Tripster
@@ -153,33 +171,16 @@ const Index = () => {
 
             {/* User Avatar/Login Button */}
             <div className="flex items-center gap-3">
+              <div className="hidden md:block">
+                <LanguageSwitcher />
+              </div>
+              
               {isAuthenticated ? (
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-full px-4 py-2">
-                    {user?.user_metadata?.avatar_url || user?.user_metadata?.picture ? (
-                      <img
-                        src={user.user_metadata.avatar_url || user.user_metadata.picture}
-                        alt="Profile"
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-teal-400 flex items-center justify-center">
-                        <User className="w-4 h-4 text-white" />
-                      </div>
-                    )}
-                    <span className="text-white text-sm font-medium">
-                      {user?.user_metadata?.display_name || user?.email || 'ผู้ใช้'}
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleSignOut}
-                    className="text-white hover:bg-white/10"
-                  >
-                    ออกจากระบบ
-                  </Button>
-                </div>
+                <UserMenu 
+                  user={user} 
+                  onSignOut={handleSignOut} 
+                  onUpdateProfile={handleProfileUpdated} 
+                />
               ) : (
                 <Button
                   variant="ghost"
@@ -188,7 +189,7 @@ const Index = () => {
                   className="text-white hover:bg-white/10 flex items-center gap-2"
                 >
                   <LogIn className="w-4 h-4" />
-                  เข้าสู่ระบบ
+                  {t('auth.login')}
                 </Button>
               )}
             </div>
@@ -202,20 +203,24 @@ const Index = () => {
             {/* Headline */}
             <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
               {isAuthenticated ? (
-                <>สวัสดี {user?.user_metadata?.display_name || user?.email || 'คุณ'} วันนี้เราจะไปไหนกันดี?</>
+                <>
+                    {language === 'th'
+                      ? `สวัสดี ${displayName} วันนี้เราจะไปไหนกันดี?`
+                      : `Hello ${displayName}, where should we go today?`}
+                </>
               ) : (
                 <>
-                  สวัสดี ฉันชื่อ Tripster
+                  {language === 'th' ? 'สวัสดี ฉันชื่อ Tripster' : "Hello, I'm Tripster"}
                   <br />
                   <span className="bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">
-                    ผู้ช่วยวางแผนการเดินทาง AI ของคุณ
+                    {t('app.subtitle')}
                   </span>
                 </>
               )}
             </h2>
 
             <p className="text-xl text-white/90 mb-12 max-w-2xl mx-auto">
-              บอกความชอบและงบประมาณ เราจะวางแผนการเดินทางที่สมบูรณ์แบบให้คุณ
+              {t('hero.description')}
             </p>
 
             {/* Search Box */}
@@ -263,7 +268,7 @@ const Index = () => {
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="เช่น: วางแผน 5 วันที่เชียงใหม่ งบประมาณ 10,000 บาท"
+                  placeholder={t('chat.placeholder')}
                   className="flex-1 border-0 bg-transparent text-base h-14 px-6"
                   onKeyPress={(e) => {
                     if (e.key === "Enter") handleStartPlanning();
@@ -276,7 +281,7 @@ const Index = () => {
                   className="h-14 px-8"
                 >
                   <MessageSquare className="w-5 h-5 mr-2" />
-                  เริ่มวางแผน
+                  {t('hero.start')}
                 </Button>
                 </div>
               </div>
@@ -301,16 +306,16 @@ const Index = () => {
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-2xl mx-auto">
               <div className="backdrop-blur-md bg-white/10 rounded-xl p-4 border border-white/20">
-                <div className="text-3xl font-bold text-white mb-1">10K+</div>
-                <div className="text-sm text-white/80">แผนการเดินทาง</div>
+                <div className="text-3xl font-bold text-white mb-1">77</div>
+                <div className="text-sm text-white/80">{t('stats.provinces')}</div>
               </div>
               <div className="backdrop-blur-md bg-white/10 rounded-xl p-4 border border-white/20">
-                <div className="text-3xl font-bold text-white mb-1">50K+</div>
-                <div className="text-sm text-white/80">ผู้ใช้งาน</div>
+                <div className="text-3xl font-bold text-white mb-1">AI ⚡</div>
+                <div className="text-sm text-white/80">{t('stats.speed')}</div>
               </div>
               <div className="backdrop-blur-md bg-white/10 rounded-xl p-4 border border-white/20 col-span-2 md:col-span-1">
-                <div className="text-3xl font-bold text-white mb-1">4.8⭐</div>
-                <div className="text-sm text-white/80">คะแนนรีวิว</div>
+                <div className="text-3xl font-bold text-white mb-1">100%</div>
+                <div className="text-sm text-white/80">{t('stats.custom')}</div>
               </div>
             </div>
           </div>
@@ -321,6 +326,9 @@ const Index = () => {
           <div className="w-6 h-10 border-2 border-white/50 rounded-full flex items-start justify-center p-2">
             <div className="w-1.5 h-3 bg-white/50 rounded-full animate-pulse" />
           </div>
+        </div>
+        <div className="md:hidden absolute top-16 right-4 z-20">
+          <LanguageSwitcher />
         </div>
       </section>
 
@@ -343,15 +351,17 @@ const Index = () => {
                 )}
                 <div className="text-left">
                   <h2 className="text-3xl md:text-4xl font-bold">
-                    แผนการเดินทางของฉัน
+                    {t('myTrips.sectionTitle')}
                   </h2>
                   <p className="text-muted-foreground text-lg">
-                    สวัสดี {user?.user_metadata?.display_name || user?.email || 'ผู้ใช้'}
+                    {language === 'th'
+                      ? `${t('myTrips.greeting')} ${displayName}`
+                      : `${t('myTrips.greeting')} ${displayName}`}
                   </p>
                 </div>
               </div>
               <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                แผนการเดินทางที่คุณเคยสร้างและบันทึกไว้
+                {t('myTrips.sectionSubtitle')}
               </p>
             </div>
 
@@ -359,19 +369,19 @@ const Index = () => {
               {loading ? (
                 <div className="col-span-full text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                  <p className="text-gray-600">กำลังโหลดแผนการเดินทาง...</p>
+                  <p className="text-gray-600">{t('myTrips.loading')}</p>
                 </div>
               ) : myTrips.length === 0 ? (
                 <div className="col-span-full text-center py-8">
                   <MapPin className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <p className="text-gray-600">ยังไม่มีแผนการเดินทาง</p>
-                  <p className="text-sm text-gray-500">เริ่มสร้างแผนการเดินทางแรกของคุณ!</p>
+                  <p className="text-gray-600">{t('myTrips.emptyTitle')}</p>
+                  <p className="text-sm text-gray-500">{t('myTrips.emptyDescription')}</p>
                   <Button 
-                    onClick={() => navigate('/chat')}
+                    onClick={() => navigate(`/${language}/chat`)}
                     className="mt-4"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    สร้างแผนแรก
+                    {t('myTrips.createFirst')}
                   </Button>
                 </div>
               ) : (
@@ -381,7 +391,7 @@ const Index = () => {
                       <div className="flex items-start justify-between">
                         <CardTitle className="text-lg line-clamp-2">{trip.title}</CardTitle>
                         <Badge variant={trip.destinations.length > 0 ? 'default' : 'secondary'}>
-                          {trip.destinations.length > 0 ? 'มีสถานที่' : 'ว่างเปล่า'}
+                          {trip.destinations.length > 0 ? t('myTrips.status.hasPlaces') : t('myTrips.status.empty')}
                         </Badge>
                       </div>
                     </CardHeader>
@@ -389,15 +399,19 @@ const Index = () => {
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Calendar className="w-4 h-4" />
-                          <span>{new Date(trip.start_date).toLocaleDateString('th-TH')} - {new Date(trip.end_date).toLocaleDateString('th-TH')}</span>
+                          <span>{new Date(trip.start_date).toLocaleDateString(dateLocale)} - {new Date(trip.end_date).toLocaleDateString(dateLocale)}</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <MapPin className="w-4 h-4" />
-                          <span>{trip.destinations.length} สถานที่</span>
+                          <span>
+                            {language === 'th'
+                              ? `${trip.destinations.length} สถานที่`
+                              : `${trip.destinations.length} places`}
+                          </span>
                         </div>
                       </div>
                       <Button variant="outline" size="sm" className="w-full mt-4">
-                        ดูรายละเอียด
+                        {t('myTrips.viewDetails')}
                       </Button>
                     </CardContent>
                   </Card>
@@ -406,9 +420,9 @@ const Index = () => {
             </div>
 
             <div className="text-center">
-              <Button variant="outline" size="lg" onClick={() => navigate('/chat')}>
+              <Button variant="outline" size="lg" onClick={() => navigate(`/${language}/chat`)}>
                 <Plus className="w-5 h-5 mr-2" />
-                สร้างแผนใหม่
+                {t('myTrips.createNew')}
               </Button>
             </div>
           </div>
@@ -420,10 +434,10 @@ const Index = () => {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              คุณสามารถถามอะไรก็ได้
+              {t('features.title')}
             </h2>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              AI ของเราพร้อมช่วยวางแผนทุกแง่มุมของการเดินทาง
+              {t('features.subtitle')}
             </p>
           </div>
 
@@ -432,9 +446,9 @@ const Index = () => {
               <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center mx-auto mb-4">
                 <Sparkles className="w-7 h-7 text-white" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">แรงบันดาลใจ</h3>
+              <h3 className="font-semibold text-lg mb-2">{t('features.card.inspiration.title')}</h3>
               <p className="text-sm text-muted-foreground">
-                ค้นหาสถานที่ท่องเที่ยวที่ซ่อนอยู่และไม่เหมือนใคร
+                {t('features.card.inspiration.description')}
               </p>
             </Card>
 
@@ -442,9 +456,9 @@ const Index = () => {
               <div className="w-14 h-14 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center mx-auto mb-4">
                 <Plane className="w-7 h-7 text-white" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">ตั้งเที่ยวบิน</h3>
+              <h3 className="font-semibold text-lg mb-2">{t('features.card.flight.title')}</h3>
               <p className="text-sm text-muted-foreground">
-                ค้นหาตั๋วเครื่องบินราคาดีที่สุด
+                {t('features.card.flight.description')}
               </p>
             </Card>
 
@@ -452,9 +466,9 @@ const Index = () => {
               <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-600 to-cyan-700 flex items-center justify-center mx-auto mb-4">
                 <MapPin className="w-7 h-7 text-white" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">ที่พัก</h3>
+              <h3 className="font-semibold text-lg mb-2">{t('features.card.lodging.title')}</h3>
               <p className="text-sm text-muted-foreground">
-                แนะนำโรงแรมและที่พักที่เหมาะกับคุณ
+                {t('features.card.lodging.description')}
               </p>
             </Card>
 
@@ -462,16 +476,16 @@ const Index = () => {
               <div className="w-14 h-14 rounded-full bg-gradient-to-br from-teal-600 to-teal-700 flex items-center justify-center mx-auto mb-4">
                 <Mountain className="w-7 h-7 text-white" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">แผนการเดินทาง</h3>
+              <h3 className="font-semibold text-lg mb-2">{t('features.card.itinerary.title')}</h3>
               <p className="text-sm text-muted-foreground">
-                วางแผนทริปละเอียดพร้อมกิจกรรมและร้านอาหาร
+                {t('features.card.itinerary.description')}
               </p>
             </Card>
           </div>
 
           {/* Example Prompts */}
           <div className="max-w-4xl mx-auto">
-            <h3 className="text-2xl font-bold text-center mb-8">ตัวอย่างคำถาม</h3>
+            <h3 className="text-2xl font-bold text-center mb-8">{t('examplePrompts.title')}</h3>
             <div className="grid md:grid-cols-2 gap-4">
               {examplePrompts.map((prompt, idx) => (
                 <Card
@@ -497,19 +511,19 @@ const Index = () => {
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjEiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] opacity-20" />
         <div className="container mx-auto px-4 text-center relative z-10">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-            พร้อมเริ่มการผจญภัยของคุณแล้วหรือยัง?
+            {t('hero.cta')}
           </h2>
           <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-            ให้ AI วางแผนการเดินทางที่สมบูรณ์แบบให้คุณภายในไม่กี่นาที
+            {t('hero.description')}
           </p>
           <Button
-            onClick={() => navigate("/chat")}
+            onClick={() => navigate(`/${language}/chat`)}
             variant="glass"
             size="lg"
             className="text-white text-lg px-12 h-16 hover:scale-105"
           >
             <Sparkles className="w-6 h-6 mr-2" />
-            เริ่มวางแผนเลย
+            {t('hero.ctaButton')}
           </Button>
         </div>
       </section>
@@ -518,7 +532,7 @@ const Index = () => {
       <footer className="py-8 bg-card border-t">
         <div className="container mx-auto px-4 text-center">
           <p className="text-sm text-muted-foreground">
-            © 2025 Tripster. ขับเคลื่อนด้วย AI เพื่อประสบการณ์การท่องเที่ยวที่ดีที่สุด
+            {t('footer.text')}
           </p>
         </div>
       </footer>

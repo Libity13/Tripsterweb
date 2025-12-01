@@ -3,6 +3,7 @@ import { TripActionSchema, TripActionsSchema, TripAction, TripActions } from "@/
 import { tripService } from "@/services/tripService";
 import { supabase } from "@/lib/unifiedSupabaseClient";
 import { config } from "@/config/environment";
+import { provinces, getProvinceByAlias } from "@/data/provinces";
 
 const PLACES_ENDPOINT = config.edgeFunctions.googlePlaces;
 
@@ -108,10 +109,146 @@ export const aiService = {
   }
 };
 
+// ============================================================
+// 🌍 Sub-Destination Mapping: เมืองท่องเที่ยว → จังหวัดแม่
+// (ใช้ร่วมกับ provinces.ts สำหรับจังหวัดหลัก)
+// ============================================================
+const SUB_DESTINATION_MAPPING: Record<string, { parentProvince: string; keywords: string[] }> = {
+  // ภาคกลาง - เมืองท่องเที่ยว
+  'หัวหิน': { parentProvince: 'ประจวบคีรีขันธ์', keywords: ['hua hin', 'huahin', 'หัวหิน'] },
+  'hua hin': { parentProvince: 'ประจวบคีรีขันธ์', keywords: ['hua hin', 'huahin', 'หัวหิน'] },
+  'ชะอำ': { parentProvince: 'เพชรบุรี', keywords: ['cha-am', 'cha am', 'ชะอำ'] },
+  'cha-am': { parentProvince: 'เพชรบุรี', keywords: ['cha-am', 'cha am', 'ชะอำ'] },
+  'เขาค้อ': { parentProvince: 'เพชรบูรณ์', keywords: ['khao kho', 'khaokho', 'เขาค้อ'] },
+  'khao kho': { parentProvince: 'เพชรบูรณ์', keywords: ['khao kho', 'khaokho', 'เขาค้อ'] },
+  'ภูทับเบิก': { parentProvince: 'เพชรบูรณ์', keywords: ['phu thap boek', 'ภูทับเบิก'] },
+  
+  // ภาคตะวันออก - เมืองท่องเที่ยว
+  'พัทยา': { parentProvince: 'ชลบุรี', keywords: ['pattaya', 'พัทยา'] },
+  'pattaya': { parentProvince: 'ชลบุรี', keywords: ['pattaya', 'พัทยา'] },
+  'เกาะล้าน': { parentProvince: 'ชลบุรี', keywords: ['koh larn', 'ko larn', 'koh lan', 'เกาะล้าน'] },
+  'บางแสน': { parentProvince: 'ชลบุรี', keywords: ['bangsaen', 'bang saen', 'บางแสน'] },
+  'เกาะช้าง': { parentProvince: 'ตราด', keywords: ['koh chang', 'ko chang', 'เกาะช้าง'] },
+  'koh chang': { parentProvince: 'ตราด', keywords: ['koh chang', 'ko chang', 'เกาะช้าง'] },
+  'เกาะหมาก': { parentProvince: 'ตราด', keywords: ['koh mak', 'ko mak', 'เกาะหมาก'] },
+  'เกาะกูด': { parentProvince: 'ตราด', keywords: ['koh kood', 'ko kood', 'koh kut', 'เกาะกูด'] },
+  'เกาะเสม็ด': { parentProvince: 'ระยอง', keywords: ['koh samet', 'ko samet', 'เกาะเสม็ด'] },
+  
+  // ภาคใต้ - เมืองท่องเที่ยว
+  'เกาะสมุย': { parentProvince: 'สุราษฎร์ธานี', keywords: ['koh samui', 'ko samui', 'samui', 'เกาะสมุย', 'สมุย'] },
+  'koh samui': { parentProvince: 'สุราษฎร์ธานี', keywords: ['koh samui', 'ko samui', 'samui', 'เกาะสมุย', 'สมุย'] },
+  'เกาะพะงัน': { parentProvince: 'สุราษฎร์ธานี', keywords: ['koh phangan', 'ko phangan', 'phangan', 'เกาะพะงัน'] },
+  'เกาะเต่า': { parentProvince: 'สุราษฎร์ธานี', keywords: ['koh tao', 'ko tao', 'เกาะเต่า'] },
+  'หาดใหญ่': { parentProvince: 'สงขลา', keywords: ['hat yai', 'hatyai', 'หาดใหญ่'] },
+  'hat yai': { parentProvince: 'สงขลา', keywords: ['hat yai', 'hatyai', 'หาดใหญ่'] },
+  'เกาะลันตา': { parentProvince: 'กระบี่', keywords: ['koh lanta', 'ko lanta', 'lanta', 'เกาะลันตา', 'ลันตา'] },
+  'koh lanta': { parentProvince: 'กระบี่', keywords: ['koh lanta', 'ko lanta', 'lanta', 'เกาะลันตา', 'ลันตา'] },
+  'เกาะพีพี': { parentProvince: 'กระบี่', keywords: ['koh phi phi', 'phi phi', 'เกาะพีพี', 'พีพี'] },
+  'koh phi phi': { parentProvince: 'กระบี่', keywords: ['koh phi phi', 'phi phi', 'เกาะพีพี', 'พีพี'] },
+  'อ่าวนาง': { parentProvince: 'กระบี่', keywords: ['ao nang', 'aonang', 'อ่าวนาง'] },
+  'เขาหลัก': { parentProvince: 'พังงา', keywords: ['khao lak', 'khaolak', 'เขาหลัก'] },
+  'เกาะยาว': { parentProvince: 'พังงา', keywords: ['koh yao', 'ko yao', 'เกาะยาว'] },
+  'เกาะลิเป๊ะ': { parentProvince: 'สตูล', keywords: ['koh lipe', 'ko lipe', 'lipe', 'เกาะลิเป๊ะ', 'ลิเป๊ะ'] },
+  'koh lipe': { parentProvince: 'สตูล', keywords: ['koh lipe', 'ko lipe', 'lipe', 'เกาะลิเป๊ะ', 'ลิเป๊ะ'] },
+  
+  // ภาคเหนือ - เมืองท่องเที่ยว
+  'ปาย': { parentProvince: 'แม่ฮ่องสอน', keywords: ['pai', 'ปาย'] },
+  'pai': { parentProvince: 'แม่ฮ่องสอน', keywords: ['pai', 'ปาย'] },
+  'ดอยอินทนนท์': { parentProvince: 'เชียงใหม่', keywords: ['doi inthanon', 'inthanon', 'ดอยอินทนนท์', 'อินทนนท์'] },
+  'ดอยสุเทพ': { parentProvince: 'เชียงใหม่', keywords: ['doi suthep', 'suthep', 'ดอยสุเทพ', 'สุเทพ'] },
+  'เชียงดาว': { parentProvince: 'เชียงใหม่', keywords: ['chiang dao', 'เชียงดาว'] },
+  'แม่กำปอง': { parentProvince: 'เชียงใหม่', keywords: ['mae kampong', 'แม่กำปอง'] },
+  'ดอยตุง': { parentProvince: 'เชียงราย', keywords: ['doi tung', 'ดอยตุง'] },
+  'สามเหลี่ยมทองคำ': { parentProvince: 'เชียงราย', keywords: ['golden triangle', 'สามเหลี่ยมทองคำ'] },
+  'ภูชี้ฟ้า': { parentProvince: 'เชียงราย', keywords: ['phu chi fa', 'ภูชี้ฟ้า'] },
+  
+  // ภาคอีสาน - เมืองท่องเที่ยว
+  'ภูกระดึง': { parentProvince: 'เลย', keywords: ['phu kradueng', 'ภูกระดึง'] },
+  'ภูเรือ': { parentProvince: 'เลย', keywords: ['phu ruea', 'ภูเรือ'] },
+  'เชียงคาน': { parentProvince: 'เลย', keywords: ['chiang khan', 'เชียงคาน'] },
+  'chiang khan': { parentProvince: 'เลย', keywords: ['chiang khan', 'เชียงคาน'] },
+};
+
+// Helper: ทำความสะอาดชื่อสถานที่ (ตัดคำขยายในวงเล็บออก)
+function cleanPlaceName(name: string): string {
+  // ตัดคำขยายในวงเล็บ เช่น "Wat Rong Khun (White Temple)" → "Wat Rong Khun"
+  // หรือ "ร้านอาหาร... (อร่อยมาก)" → "ร้านอาหาร..."
+  return name.replace(/\s*\([^)]*\)\s*/g, '').trim();
+}
+
+// Helper: หา Keywords ที่ต้องเช็คจาก provinces.ts + SUB_DESTINATION_MAPPING
+function getProvinceKeywords(locationCtx: string): string[] {
+  const ctx = locationCtx.toLowerCase().trim();
+  const keywords: string[] = [];
+  
+  // 1. ลองหาใน provinces.ts ก่อน (ใช้ getProvinceByAlias)
+  const province = getProvinceByAlias(ctx);
+  if (province) {
+    // เพิ่ม aliases ทั้งหมดของจังหวัดนั้น
+    keywords.push(...province.aliases);
+    // เพิ่มชื่อจังหวัดด้วย
+    keywords.push(province.name.toLowerCase());
+    console.log(`📍 Found province: ${province.name} with aliases: [${province.aliases.join(', ')}]`);
+  }
+  
+  // 2. ลองหาใน SUB_DESTINATION_MAPPING (เมืองท่องเที่ยวย่อย)
+  const subDest = SUB_DESTINATION_MAPPING[ctx];
+  if (subDest) {
+    // เพิ่ม keywords ของเมืองย่อย
+    keywords.push(...subDest.keywords);
+    
+    // เพิ่ม keywords ของจังหวัดแม่ด้วย
+    const parentProvince = getProvinceByAlias(subDest.parentProvince);
+    if (parentProvince) {
+      keywords.push(...parentProvince.aliases);
+      keywords.push(parentProvince.name.toLowerCase());
+    }
+    console.log(`🏝️ Found sub-destination: ${ctx} → parent: ${subDest.parentProvince}`);
+  }
+  
+  // 3. ถ้าไม่เจอตรงๆ ลองหาคำที่มีใน context ใน SUB_DESTINATION_MAPPING
+  if (keywords.length === 0) {
+    for (const [key, value] of Object.entries(SUB_DESTINATION_MAPPING)) {
+      if (ctx.includes(key.toLowerCase())) {
+        keywords.push(...value.keywords);
+        const parentProvince = getProvinceByAlias(value.parentProvince);
+        if (parentProvince) {
+          keywords.push(...parentProvince.aliases);
+        }
+      }
+    }
+  }
+  
+  // 4. ถ้ายังไม่เจอ ลองค้นหาใน provinces object โดยตรง
+  if (keywords.length === 0) {
+    for (const [provinceName, provinceData] of Object.entries(provinces)) {
+      for (const alias of provinceData.aliases) {
+        if (ctx.includes(alias.toLowerCase())) {
+          keywords.push(...provinceData.aliases);
+          keywords.push(provinceData.name.toLowerCase());
+          break;
+        }
+      }
+    }
+  }
+  
+  // 5. Fallback: แยกคำจาก context
+  if (keywords.length === 0) {
+    keywords.push(...ctx.split(/[-\s,/]+/).filter(w => w.length >= 2));
+  }
+  
+  // Remove duplicates and return
+  return [...new Set(keywords.map(k => k.toLowerCase()))];
+}
+
 async function resolvePlace(name: string, locationCtx?: string): Promise<ResolvedPlace | null> {
   try {
-    const q = locationCtx ? `${name} ${locationCtx}` : name;
-    console.log(`🔍 Resolving place: "${q}"`);
+    // 1. ทำความสะอาดชื่อ: ตัดคำขยายที่ทำให้สับสนออก
+    const cleanName = cleanPlaceName(name);
+    
+    // 2. สร้าง Query ที่ "บังคับจังหวัด" อย่างแน่นหนา
+    const q = locationCtx ? `${cleanName} ${locationCtx}` : cleanName;
+    console.log(`🔍 Resolving place: "${q}" (original: "${name}")`);
     
     const response = await fetch(PLACES_ENDPOINT, {
       method: "POST",
@@ -140,71 +277,82 @@ async function resolvePlace(name: string, locationCtx?: string): Promise<Resolve
       return null;
     }
 
-    // ******************************************************************
-    // 🛠️ กรองความสอดคล้องของจังหวัด/เมืองแบบยืดหยุ่นและชาญฉลาด
-    // ******************************************************************
+    // ============================================================
+    // 🛠️ IMPROVED LOGIC: Cross-Language Resolution (Thai <-> English)
+    // ยืดหยุ่นมากขึ้นเพื่อรองรับการค้นหาภาษาอังกฤษในประเทศไทย
+    // ============================================================
     if (locationCtx) {
-      const addr = (first.formatted_address || "").toLowerCase();
-      const ctx = locationCtx.toLowerCase();
+      const address = (first.formatted_address || "").toLowerCase();
+      const ctx = locationCtx.toLowerCase().trim();
       const placeName = (first.name || "").toLowerCase();
-      const searchName = name.toLowerCase();
+      const searchName = cleanName.toLowerCase();
       
-      // 1. แยก context เป็นคำสำคัญ (เช่น "หัวหิน-ชะอำ" → ["หัวหิน", "ชะอำ"])
-      let contextKeywords = ctx
-        .split(/[-\s,/]+/) 
-        .filter(w => w.length >= 2);
+      // หา Keywords ที่ต้องเช็คจาก Province Mapping (ทั้งไทย/อังกฤษ)
+      const validKeywords = getProvinceKeywords(ctx);
+      console.log(`🔍 Checking keywords: [${validKeywords.join(', ')}] in address: "${address}"`);
       
-      // 2. เพิ่มชื่อจังหวัดที่เกี่ยวข้องสำหรับพื้นที่เฉพาะ
-      if (ctx.includes('หัวหิน') || ctx.includes('ชะอำ')) {
-        // หัวหินอยู่ในประจวบคีรีขันธ์, ชะอำอยู่ในเพชรบุรี
-        contextKeywords.push('ประจวบคีรีขันธ์', 'เพชรบุรี', 'prachuap', 'phetchaburi');
-      }
-      if (ctx.includes('ภูเก็ต') || ctx.includes('phuket')) {
-        contextKeywords.push('ภูเก็ต', 'phuket');
-      }
-      if (ctx.includes('เชียงใหม่') || ctx.includes('chiang mai')) {
-        contextKeywords.push('เชียงใหม่', 'chiang mai');
-      }
-      if (ctx.includes('กระบี่') || ctx.includes('krabi')) {
-        contextKeywords.push('กระบี่', 'krabi');
-      }
-      if (ctx.includes('พัทยา') || ctx.includes('pattaya')) {
-        contextKeywords.push('ชนบุรี', 'chonburi', 'pattaya');
-      }
+      // เช็คว่าที่อยู่ที่ได้จาก Google มีคำพวกนี้ไหม?
+      const isLocationCorrect = validKeywords.some(kw => address.includes(kw.toLowerCase()));
       
-      // นำคำที่ซ้ำออก
-      contextKeywords = [...new Set(contextKeywords)];
+      // [NEW] เช็คว่าอยู่ในประเทศไทยหรือไม่ (Fallback สำหรับ Cross-language)
+      const isInThailand = address.includes('thailand') || address.includes('ประเทศไทย') || address.includes('ไทย');
       
-      // 3. ตรวจสอบว่ามีคำสำคัญใดคำหนึ่งใน address หรือไม่
-      const hasMatch = contextKeywords.some(keyword => addr.includes(keyword));
-      
-      // 4. หากไม่มีคำ Match เลย
-      if (!hasMatch && contextKeywords.length > 0) {
+      if (isLocationCorrect) {
+        // ✅ ผ่าน! ถ้าจังหวัดถูก เราเชื่อ Google เลยว่ามันคือสถานที่ที่ user อยากได้
+        console.log(`✅ Location Match: "${first.name}" is in ${validKeywords.slice(0, 3).join('/')}`);
+      } else {
         console.warn(
-          `⚠️ Place "${first.name}" (${addr}) not in context "${locationCtx}". ` +
-          `Keywords checked: ${contextKeywords.join(', ')}`
+          `⚠️ Location Mismatch: "${first.name}" address "${address}" ` +
+          `not matching context "${ctx}". Keywords: [${validKeywords.join(', ')}]`
         );
         
-        // ⚠️ ทางออกชั่วคราว: ผ่อนปรนการตรวจสอบ
-        // หาก Context Check ล้มเหลว แต่ชื่อสถานที่ที่ Google คืนค่ามา
-        // มีชื่อสถานที่ที่ AI ส่งมา → ให้ผ่าน (เพราะ Google มักจะคืนค่าที่ถูกต้อง)
+        // [IMPROVED] Name Matching ที่ยืดหยุ่นมากขึ้น
+        // 1. Direct match (เหมือนเดิม)
+        // 2. Tokenized match - เปรียบเทียบแบบตัดคำ (เพื่อรองรับกรณีชื่อยาวๆ)
+        // 3. Cross-language tokens - "Wat" == "วัด", "Temple", etc.
+        const searchTokens = searchName.split(/[\s-]+/).filter(t => t.length >= 2);
+        const placeTokens = placeName.split(/[\s-]+/).filter(t => t.length >= 2);
+        
         const nameMatch = 
           placeName.includes(searchName) || 
           searchName.includes(placeName) ||
-          placeName.split(/\s+/).some(word => searchName.includes(word) && word.length >= 3);
+          // Tokenized match: ถ้ามี token ใดตรงกัน (และยาวพอ)
+          searchTokens.some(token => token.length >= 3 && placeName.includes(token)) ||
+          placeTokens.some(token => token.length >= 3 && searchName.includes(token)) ||
+          // Cross-language common words match
+          (searchName.includes('wat') && (placeName.includes('วัด') || placeName.includes('temple'))) ||
+          (searchName.includes('temple') && (placeName.includes('วัด') || placeName.includes('wat'))) ||
+          (searchName.includes('beach') && (placeName.includes('หาด') || placeName.includes('beach'))) ||
+          (searchName.includes('market') && (placeName.includes('ตลาด') || placeName.includes('market'))) ||
+          (searchName.includes('park') && (placeName.includes('สวน') || placeName.includes('อุทยาน'))) ||
+          (searchName.includes('mountain') && (placeName.includes('ภูเขา') || placeName.includes('ดอย'))) ||
+          (searchName.includes('lake') && (placeName.includes('บึง') || placeName.includes('ทะเลสาบ'))) ||
+          (searchName.includes('museum') && placeName.includes('พิพิธภัณฑ์')) ||
+          (searchName.includes('restaurant') && (placeName.includes('ร้าน') || placeName.includes('ร้านอาหาร')));
         
-        if (nameMatch) {
+        if (nameMatch && !locationCtx) {
+          // [STRICT] อนุญาต Name Match เฉพาะกรณีไม่มี Context เท่านั้น
+          // ถ้ามี Context (เช่นระบุจังหวัด) แล้ว address ไม่ตรง เราจะไม่ใช้ Name Match เพื่อป้องกันการมั่วข้ามจังหวัด
           console.log(
-            `✅ Forcing resolution: Name match found despite context warning. ` +
-            `Place: "${first.name}", Search: "${name}"`
+            `✅ Fallback (Name Match without Context): "${first.name}" ~ "${cleanName}"`
+          );
+        } else if (nameMatch && locationCtx) {
+             // [STRICT] มี Context แต่ Address ไม่ตรง แม้ชื่อตรงก็ไม่เอา (เสี่ยงคนละสาขา/คนละที่)
+             console.log(`❌ Skipping: Name matched "${first.name}" but address mismatch with context "${locationCtx}". Address: "${address}"`);
+             return null;
+        } else if (isInThailand && !locationCtx) {
+          // [NEW] ถ้าอยู่ในประเทศไทยและเราไม่ได้ระบุ Context → เชื่อ Google
+          console.log(
+            `✅ Fallback (Thailand no context): "${first.name}" is in Thailand. `
           );
         } else {
-          console.log(`❌ Skipping: Neither context nor name match. Place will be skipped.`);
-          return null; // ข้ามผลลัพธ์ที่ไม่ตรง context และชื่อ
+          // [STRICT] ถ้ามี Context แต่ไม่ตรงทั้งที่อยู่และชื่อ -> ไม่เอาเลย (ป้องกันการมั่วพิกัดข้ามจังหวัด)
+          console.log(`❌ Skipping: Location mismatch. Context: "${ctx}", Address: "${address}"`);
+          return null; 
         }
       }
     }
-    // ******************************************************************
+    // ============================================================
 
     const resolved: ResolvedPlace = {
       place_id: first.place_id,
@@ -319,6 +467,21 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
       actions = parse.data.actions;
     }
 
+    // [FIX] Sort actions to ensure correct execution order
+    // UPDATE_TRIP_INFO (resize trip) -> REMOVE (clear old) -> ADD (add new to correct days) -> REORDER
+    const ACTION_PRIORITY: Record<string, number> = {
+      'UPDATE_TRIP_INFO': 1,
+      'REMOVE_DESTINATIONS': 2,
+      'ADD_DESTINATIONS': 3,
+      'REORDER_DESTINATIONS': 4,
+    };
+    
+    actions.sort((a, b) => {
+      const pA = ACTION_PRIORITY[a.action] || 99;
+      const pB = ACTION_PRIORITY[b.action] || 99;
+      return pA - pB;
+    });
+
     for (const action of actions) {
       console.log(`🎯 Processing action: ${action.action}`);
       
@@ -337,14 +500,25 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
           // Get trip info to calculate proper day distribution
           const trip = await tripService.getTrip(tripId);
           const rawDiffDays = trip ? Math.ceil((new Date(trip.end_date).getTime() - new Date(trip.start_date).getTime()) / (1000 * 60 * 60 * 24)) : 0;
-          const tripDays = Math.max(1, rawDiffDays);
-          console.log(`📅 Trip has ${tripDays} days, distributing destinations...`);
+          // [FIX] tripDays should be diff + 1 (inclusive dates)
+          const tripDays = Math.max(1, rawDiffDays + 1);
+          console.log(`📅 Trip has ${tripDays} days (Start: ${trip?.start_date}, End: ${trip?.end_date})`);
+          
+          // Track order_index per day to avoid collisions
+          const orderIndexByDay: Record<number, number> = {};
+          // Initialize with max order_index from existing destinations
+          for (const dest of existingDestinations?.destinations || []) {
+            const destDay = dest.visit_date ?? 1;
+            const destOrder = (dest as any).order_index ?? 0;
+            orderIndexByDay[destDay] = Math.max(orderIndexByDay[destDay] ?? 0, destOrder);
+          }
           
           for (let i = 0; i < action.destinations.length; i++) {
             const dest = action.destinations[i];
-            // Distribute destinations across all days, honoring requested base day when provided
-            const baseDay = Math.min(Math.max(1, day), tripDays);
-            const targetDay = ((baseDay - 1 + i) % tripDays) + 1;
+            // [FIX] ไม่กระจายวันเอง ใช้ตามที่ระบุมา (หรือ default day)
+            // ถ้า AI อยากให้กระจาย ต้องส่งมาหลาย action แยกตามวัน
+            const targetDay = Math.min(Math.max(1, day), tripDays);
+            
             // Skip if destination already exists
             if (existingNames.includes(dest.name.toLowerCase())) {
               console.log(`⏭️ Skipping duplicate destination: ${dest.name}`);
@@ -363,7 +537,11 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
               continue;
             }
 
-            console.log(`📍 Adding ${dest.name} to day ${targetDay}`);
+            // Calculate next order_index for this day
+            const nextOrderIndex = (orderIndexByDay[targetDay] ?? 0) + 1;
+            orderIndexByDay[targetDay] = nextOrderIndex;
+
+            console.log(`📍 Adding ${dest.name} to day ${targetDay} (order: ${nextOrderIndex})`);
             await tripService.addDestination(tripId, {
               trip_id: tripId,
               place_id: resolved.place_id,
@@ -383,7 +561,7 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
               user_ratings_total: resolved.user_ratings_total,
               price_level: resolved.price_level,
               opening_hours: null,
-              order_index: 1
+              order_index: nextOrderIndex
             });
           }
           break;

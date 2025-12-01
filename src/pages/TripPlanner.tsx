@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Clock, DollarSign, Star, Navigation, Share2, Download, MessageCircle, User } from 'lucide-react';
+import { MapPin, Clock, DollarSign, Star, Navigation, Share2, Download, MessageCircle, User, X } from 'lucide-react';
 import MapView from '@/components/trip/MapView';
 import ItineraryPanel from '@/components/trip/ItineraryPanel';
 import ChatPanel from '@/components/trip/ChatPanel';
@@ -268,29 +268,14 @@ const TripPlanner = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
       {/* Header */}
-      <div className="bg-white border-b">
-        <div className="container mx-auto px-4 py-6">
+      <div className="bg-white border-b shrink-0">
+        <div className="px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">{trip.title}</h1>
-                <p className="text-gray-600 mt-1">{trip.description}</p>
-                <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    <span>{trip.total_duration} hours</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <DollarSign className="h-4 w-4" />
-                    <span>฿{(trip.destinations?.reduce((sum, dest) => sum + (dest.estimated_cost || 0), 0) || 0).toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    <span>{trip.destinations.length} destinations</span>
-                  </div>
-                </div>
+                <h1 className="text-2xl font-bold text-gray-900">{trip.title}</h1>
               </div>
               {user && (
                 <div className="flex items-center gap-2 bg-gray-50 rounded-full px-3 py-2">
@@ -312,91 +297,98 @@ const TripPlanner = () => {
               )}
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleShareTrip}>
+              <Button variant="outline" onClick={handleShareTrip} size="sm">
                 <Share2 className="h-4 w-4 mr-2" />
                 Share
               </Button>
-              <Button variant="outline" onClick={handleExportPDF}>
+              <Button variant="outline" onClick={handleExportPDF} size="sm">
                 <Download className="h-4 w-4 mr-2" />
                 Export PDF
               </Button>
-                <Button onClick={() => setShowLoginModal(true)}>
+              {user ? (
+                <Button onClick={handleSaveTrip} size="sm">
+                  บันทึก
+                </Button>
+              ) : (
+                <Button onClick={() => setShowLoginModal(true)} size="sm">
                   เข้าสู่ระบบเพื่อบันทึก
                 </Button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
-          {/* ซ้าย - Chat Panel */}
-          <div className="lg:col-span-1">
-            <Card className="h-full flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageCircle className="h-5 w-5" />
-                  💬 Chat with AI
-                </CardTitle>
-              </CardHeader>
-                <CardContent className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 p-4">
+        <div className="h-full">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-full">
+            {/* ซ้าย - Chat Panel */}
+            <div className="lg:col-span-1 h-full min-h-0">
+              <Card className="h-full flex flex-col overflow-hidden">
+                <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
                   <ChatPanel 
                     tripId={trip?.id}
                     onDestinationsUpdate={handleDestinationsUpdate}
                   />
                 </CardContent>
-            </Card>
-          </div>
+              </Card>
+            </div>
 
-          {/* กลาง - Itinerary Panel */}
-          <div className="lg:col-span-1">
-            <Card className="h-full flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  📋 Itinerary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 overflow-hidden">
-                <ItineraryPanel 
-                  destinations={trip.destinations}
-                  onUpdate={handleDestinationsUpdate}
-                  onAddDestination={handleAddDestination}
-                  startDate={trip.start_date}
-                  endDate={trip.end_date}
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                  onSelectedDayChange={setSelectedDay}
-                  tripId={trip.id}
-                />
-              </CardContent>
-            </Card>
-          </div>
+            {/* กลาง - Itinerary Panel */}
+            <div className="lg:col-span-1 h-full min-h-0">
+              <Card className="h-full flex flex-col overflow-hidden">
+                <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
+                  <ItineraryPanel 
+                    destinations={trip.destinations}
+                    onUpdate={handleDestinationsUpdate}
+                    onAddDestination={handleAddDestination}
+                    startDate={trip.start_date}
+                    endDate={trip.end_date}
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    onSelectedDayChange={setSelectedDay}
+                    tripId={trip.id}
+                  />
+                </CardContent>
+              </Card>
+            </div>
 
-          {/* ขวา - Map View */}
-          <div className="lg:col-span-1">
-            <Card className="h-full flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Navigation className="h-5 w-5" />
-                  🗺️ Map View
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 p-0">
-                <ErrorBoundary>
-                  <MapView destinations={trip.destinations} selectedDay={selectedDay} />
-                </ErrorBoundary>
-              </CardContent>
-            </Card>
+            {/* ขวา - Map View */}
+            <div className="lg:col-span-1 h-full min-h-0">
+              <Card className="h-full flex flex-col overflow-hidden">
+                <CardContent className="flex-1 min-h-0 p-0 relative">
+                  <div className="absolute inset-0">
+                    <ErrorBoundary>
+                      <MapView destinations={trip.destinations} selectedDay={selectedDay} />
+                    </ErrorBoundary>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Login Prompt Modal */}
       {showLoginPrompt && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={() => setShowLoginPrompt(false)}
+        >
+          <Card 
+            className="w-full max-w-md mx-4 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowLoginPrompt(false)}
+              className="absolute top-3 right-3 h-8 w-8 rounded-full hover:bg-gray-100 z-10"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
             <CardHeader>
               <CardTitle className="text-center">🎉 Save Your Trip!</CardTitle>
             </CardHeader>
@@ -427,25 +419,25 @@ const TripPlanner = () => {
               </div>
             </CardContent>
           </Card>
-          </div>
-        )}
+        </div>
+      )}
 
-        {/* Login Modal */}
-        <LoginModal
-          isOpen={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
-          onSuccess={handleLoginSuccess}
-        />
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={handleLoginSuccess}
+      />
 
-        {/* Place Search Modal */}
-        <PlaceSearch
-          isOpen={showPlaceSearch}
-          onClose={() => setShowPlaceSearch(false)}
-          onSelectPlace={handleSelectPlace}
-          day={selectedDay}
-        />
-      </div>
-    );
-  };
+      {/* Place Search Modal */}
+      <PlaceSearch
+        isOpen={showPlaceSearch}
+        onClose={() => setShowPlaceSearch(false)}
+        onSelectPlace={handleSelectPlace}
+        day={selectedDay}
+      />
+    </div>
+  );
+};
 
-  export default TripPlanner;
+export default TripPlanner;

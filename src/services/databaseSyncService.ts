@@ -35,13 +35,16 @@ export class DatabaseSyncService {
         allUpdates.push(...dayUpdates);
       }
 
-      // Two-phase update to avoid unique constraint violations
+      // Two-phase update with random offset to avoid unique constraint violations
       if (allUpdates.length > 0) {
-        // Phase 1: Set all order_index to temporary high values (1000+) to clear conflicts
-        console.log('🔄 Phase 1: Setting temporary order indices to avoid conflicts');
+        // Generate unique random offset for this batch (9000-9999 range)
+        const randomOffset = Math.floor(Math.random() * 1000) + 9000;
+        console.log(`🔄 Phase 1: Setting temporary order indices with random offset ${randomOffset}`);
+        
+        // Phase 1: Set all order_index to temporary high values with random offset
         for (let i = 0; i < allUpdates.length; i++) {
           const update = allUpdates[i];
-          const tempOrderIndex = 1000 + i; // Use high temporary values
+          const tempOrderIndex = randomOffset + i; // Use random offset + index
           
           const { error } = await supabase
             .from('destinations')
@@ -55,6 +58,9 @@ export class DatabaseSyncService {
           }
         }
 
+        // Small delay to ensure Phase 1 completes (150ms)
+        await new Promise(resolve => setTimeout(resolve, 150));
+        
         // Phase 2: Update to final values (visit_date and order_index)
         console.log('🔄 Phase 2: Setting final order indices and visit_date');
         for (const update of allUpdates) {
@@ -82,9 +88,9 @@ export class DatabaseSyncService {
   }
 
   // Add destination to database
-  async addDestination(destination: Omit<Destination, 'id'>, tripId: string): Promise<Destination> {
+  async addDestination(destination: Omit<Destination, 'id'>, tripId: string, locationContext?: string): Promise<Destination> {
     try {
-      console.log('➕ Adding destination to database:', destination.name);
+      console.log('➕ Adding destination to database:', destination.name, locationContext ? `(context: ${locationContext})` : '');
       
       // Get next order index for the specific day
       const nextOrderIndex = await this.getNextOrderIndex(tripId, destination.visit_date);
@@ -123,9 +129,9 @@ export class DatabaseSyncService {
       
       // Try to get coordinates if missing
       if (!data.latitude || !data.longitude) {
-        console.log('🔍 Attempting to geocode destination:', data.name);
+        console.log('🔍 Attempting to geocode destination:', data.name, locationContext ? `with context: ${locationContext}` : '');
         try {
-          await geocodingService.processMissingCoordinates([data]);
+          await geocodingService.processMissingCoordinates([data], locationContext);
         } catch (error) {
           console.warn('⚠️ Could not geocode destination:', error);
         }
@@ -423,41 +429,117 @@ export class DatabaseSyncService {
   }
 
   // Sync AI actions to database
-  async syncAIActions(actions: any[], tripId: string): Promise<void> {
+  async syncAIActions(
+    actions: any[], 
+    tripId: string,
+    callbacks?: {
+      onGeocodingProgress?: (current: number, total: number, placeName: string) => void;
+      onGeocodingFailed?: (placeName: string) => void;
+    }
+  ): Promise<void> {
     try {
       console.log('🤖 Syncing AI actions to database:', actions.length, 'actions');
+      
+      // Count total destinations for progress tracking
+      let totalDestinations = 0;
+      let currentDestination = 0;
+      
+      for (const action of actions) {
+        if (action.action === 'ADD_DESTINATIONS' && action.destinations) {
+          totalDestinations += action.destinations.length;
+        }
+      }
       
       for (const action of actions) {
         switch (action.action) {
           case 'ADD_DESTINATIONS':
             if (action.destinations && action.destinations.length > 0) {
+              const locationContext = action.location_context || null;
               console.log('📅 AI action details:', { 
                 action: action.action, 
                 day: action.day, 
-                destinations: action.destinations.length 
+                destinations: action.destinations.length,
+                location_context: locationContext 
               });
               
               // Extract day from action or default to 1
-              let targetDay = action.day || 1;
+              let targetDay = action.day || null;
               
               // If no day specified, try to extract from action context
-              if (!action.day && action.context) {
+              if (!targetDay && action.context) {
                 const dayMatch = action.context.match(/วันที่(\d+)/);
                 if (dayMatch) {
                   targetDay = parseInt(dayMatch[1]);
                 }
               }
               
-              console.log('📅 Using target day:', targetDay);
+              // 🆕 ถ้า AI ไม่ระบุ day มา ให้กระจายสถานที่อัตโนมัติตามจำนวนวันของทริป
+              let shouldDistribute = !targetDay;
+              let totalTripDays = 1;
               
-              for (const dest of action.destinations) {
+              if (shouldDistribute) {
+                // Get trip info to calculate total days
+                try {
+                  const { data: trip, error } = await supabase
+                    .from('trips')
+                    .select('start_date, end_date')
+                    .eq('id', tripId)
+                    .single();
+                  
+                  if (!error && trip?.start_date && trip?.end_date) {
+                    const start = new Date(trip.start_date);
+                    const end = new Date(trip.end_date);
+                    totalTripDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                    console.log(`📅 Trip has ${totalTripDays} days, will distribute destinations evenly`);
+                  } else {
+                    console.warn('⚠️ Could not get trip dates, defaulting to 1 day');
+                    totalTripDays = 1;
+                    shouldDistribute = false;
+                  }
+                } catch (error) {
+                  console.error('❌ Error getting trip info:', error);
+                  shouldDistribute = false;
+                }
+              }
+              
+              console.log('📅 Using target day:', targetDay || 'auto-distribute');
+              
+              for (let i = 0; i < action.destinations.length; i++) {
+                const dest = action.destinations[i];
+                currentDestination++;
+                const placeName = dest.name || dest.name_en || 'Unknown';
+                
+                // Report progress
+                if (callbacks?.onGeocodingProgress) {
+                  callbacks.onGeocodingProgress(currentDestination, totalDestinations, placeName);
+                }
+                
+                // 🆕 Calculate visit_date: distribute evenly across trip days
+                let visitDate = targetDay;
+                if (shouldDistribute) {
+                  // แบ่งสถานที่เท่าๆ กันไปตามวัน (แบ่งแบบต่อเนื่อง)
+                  const destinationsPerDay = Math.ceil(action.destinations.length / totalTripDays);
+                  visitDate = Math.floor(i / destinationsPerDay) + 1;
+                  visitDate = Math.min(visitDate, totalTripDays); // ไม่เกินจำนวนวัน
+                } else if (!visitDate) {
+                  visitDate = 1; // fallback
+                }
+                
                 // Map day field to visit_date for proper day assignment
                 const destinationWithDay = {
                   ...dest,
-                  visit_date: targetDay // Use extracted or default day
+                  visit_date: visitDate
                 };
-                console.log('📅 Adding destination with visit_date:', destinationWithDay.visit_date);
-                await this.addDestination(destinationWithDay, tripId);
+                console.log(`📅 Adding destination "${placeName}" to day ${destinationWithDay.visit_date}`);
+                
+                try {
+                  await this.addDestination(destinationWithDay, tripId, locationContext);
+                } catch (error) {
+                  console.error(`❌ Failed to add destination: ${placeName}`, error);
+                  if (callbacks?.onGeocodingFailed) {
+                    callbacks.onGeocodingFailed(placeName);
+                  }
+                }
               }
             }
             break;

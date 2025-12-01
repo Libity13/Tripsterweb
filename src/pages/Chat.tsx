@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MessageCircle, Send, Loader2, MapPin, Calendar, Star } from 'lucide-react';
+import { MessageCircle, Send, Loader2, MapPin, Calendar, Star, Sparkles } from 'lucide-react';
 import { aiService, applyAIActions, validateAIResponse } from '@/services/aiService';
 import { databaseSyncService } from '@/services/databaseSyncService';
 import { useAIConfig } from '@/config/aiConfig';
@@ -17,9 +17,16 @@ import { tripService } from '@/services/tripService';
 import { supabase } from '@/lib/unifiedSupabaseClient';
 import { ChatMessage, Destination } from '@/types/database';
 import { toast } from 'sonner';
+import { LocationChangeDialog, LocationChangeChoice } from '@/components/LocationChangeDialog';
 
 const Chat = () => {
   const { language, t } = useLanguage();
+  const timeLocale = language === 'th' ? 'th-TH' : 'en-US';
+  const starterPrompts = [
+    { label: t('chat.empty.sample1Short'), message: t('chat.empty.sample1') },
+    { label: t('chat.empty.sample2Short'), message: t('chat.empty.sample2') },
+    { label: t('chat.empty.sample3Short'), message: t('chat.empty.sample3') },
+  ];
   const location = useLocation();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -31,6 +38,13 @@ const Chat = () => {
   const [tripId, setTripId] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<string>('idle'); // Add AI status state
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Location change detection states
+  const [previousLocation, setPreviousLocation] = useState<string | null>(null);
+  const [showLocationChangeDialog, setShowLocationChangeDialog] = useState(false);
+  const [pendingActions, setPendingActions] = useState<any[]>([]);
+  const [pendingNewLocation, setPendingNewLocation] = useState<string>('');
+  const [lastUserMessage, setLastUserMessage] = useState<string>('');
   
   // Get AI config from context
   const { config: aiConfig, updateProvider, updateModel, getAvailableModels } = useAIConfig();
@@ -52,8 +66,119 @@ const Chat = () => {
     }
   }, [location.state]);
 
+  // Detect location change in AI actions or user message
+  const detectLocationChange = (actions: any[], userMessage: string): boolean => {
+    // Try to find location_context from actions
+    let newLocation = null;
+    
+    // Check RECOMMEND_PLACES first
+    const recommendAction = actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
+    if (recommendAction?.location_context) {
+      newLocation = recommendAction.location_context;
+    }
+    
+    // Check ADD_DESTINATIONS if no RECOMMEND_PLACES
+    if (!newLocation) {
+      const addAction = actions.find((a: any) => a.action === 'ADD_DESTINATIONS');
+      if (addAction?.location_context) {
+        newLocation = addAction.location_context;
+      }
+    }
+    
+    // Fallback: extract from user message
+    if (!newLocation && userMessage) {
+      const provinces = findProvincesInText(userMessage);
+      if (provinces.length > 0) {
+        newLocation = provinces[0].name; // Extract name from province object
+      }
+    }
+    
+    if (!newLocation) return false;
+
+    // Check if location changed and we have an existing trip
+    if (previousLocation && previousLocation !== newLocation && tripId) {
+      console.log(`🗺️ Location change detected: ${previousLocation} → ${newLocation}`);
+      console.log(`   From actions:`, actions.map(a => a.action).join(', '));
+      console.log(`   User message:`, userMessage);
+      setPendingNewLocation(newLocation);
+      return true;
+    }
+    
+    // Update previous location if no trip exists yet (first time)
+    if (!previousLocation && !tripId) {
+      console.log(`📍 Setting initial location: ${newLocation}`);
+      setPreviousLocation(newLocation);
+    }
+    
+    return false;
+  };
+
+  // Handle location change choice
+  const handleLocationChoice = async (choice: LocationChangeChoice) => {
+    setShowLocationChangeDialog(false);
+
+    if (choice === 'cancel') {
+      setPendingActions([]);
+      setPendingNewLocation('');
+      setLoading(false);
+      setAiStatus('idle');
+      toast.info('ยกเลิกการเปลี่ยนปลายทาง');
+      return;
+    }
+
+    if (choice === 'new-trip') {
+      console.log('🆕 Creating new trip for:', pendingNewLocation);
+      
+      // Clear old trip data
+      setTripId(null);
+      setMessages([]);
+      
+      // Update location
+      setPreviousLocation(pendingNewLocation);
+      
+      // Re-send the last message to create new trip
+      if (lastUserMessage) {
+        toast.success(`เริ่มวางแผนทริปใหม่ที่ ${pendingNewLocation}`);
+        setTimeout(() => {
+          handleSend(lastUserMessage);
+        }, 500);
+      }
+    } else if (choice === 'add-location') {
+      console.log('➕ Adding location to existing trip:', pendingNewLocation);
+      
+      // Update location (allowing multi-destination)
+      setPreviousLocation(`${previousLocation}, ${pendingNewLocation}`);
+      
+      // Process pending actions with existing trip
+      if (pendingActions.length > 0) {
+        toast.success(`เพิ่ม ${pendingNewLocation} เข้าทริปเดิม`);
+        const combinedContext = lastUserMessage;
+        await processAIActions(pendingActions, combinedContext);
+      }
+    }
+
+    // Clear pending data
+    setPendingActions([]);
+    setPendingNewLocation('');
+    setLoading(false);
+    setAiStatus('idle');
+  };
+
+  // Handle undo
+  const handleUndo = () => {
+    setShowLocationChangeDialog(false);
+    setPendingActions([]);
+    setPendingNewLocation('');
+    setLoading(false);
+    setAiStatus('idle');
+    toast.info('ยกเลิกการเปลี่ยนปลายทาง');
+  };
+
   const handleSend = async (message: string) => {
     if (!message.trim() || loading) return;
+
+    // Store user message for potential re-sending
+    setLastUserMessage(message);
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -103,12 +228,19 @@ const Chat = () => {
         if (validatedResponse) {
           // Use reply from validated response, or fallback to response.reply/narrative
           const aiContent = validatedResponse.reply || response.reply || response.narrative || response.message || 'ได้ประมวลผลคำขอของคุณแล้ว';
+          
+          // Extract recommendations from RECOMMEND_PLACES action
+          const recommendAction: any = validatedResponse.actions?.find((a: any) => a.action === 'RECOMMEND_PLACES');
+          const recommendations = recommendAction?.recommendations || null;
+          
           const aiMessage: ChatMessage = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
             content: aiContent,
             language: language,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            actions: validatedResponse.actions, // Store actions
+            metadata: recommendations ? { recommendations } : null // Store recommendations
           };
 
           setMessages(prev => [...prev, aiMessage]);
@@ -127,11 +259,29 @@ const Chat = () => {
           // Process AI actions
           if (validatedResponse.actions && validatedResponse.actions.length > 0) {
             console.log('🎯 Processing AI actions:', validatedResponse.actions);
+            
+            // Check for location change
+            if (detectLocationChange(validatedResponse.actions, message)) {
+              // Store pending actions and show dialog
+              setPendingActions(validatedResponse.actions);
+              setShowLocationChangeDialog(true);
+              // Don't process actions yet, wait for user choice
+              setLoading(false);
+              setAiStatus('idle');
+              return;
+            }
+            
             setAiStatus('processing'); // Set AI status to processing
             // Pass both user message and AI reply to help intent/day extraction
             const combinedContext = `${message} ${validatedResponse.reply || ''}`.trim();
             await processAIActions(validatedResponse.actions, combinedContext);
             setAiStatus('completed'); // Set AI status to completed
+            
+            // Update previous location if present
+            const recommendAction: any = validatedResponse.actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
+            if (recommendAction?.location_context && !previousLocation) {
+              setPreviousLocation(recommendAction.location_context);
+            }
           } else {
             setAiStatus('idle'); // Set AI status back to idle
           }
@@ -139,12 +289,19 @@ const Chat = () => {
           // Fallback to original response if validation fails
           // Use narrative, reply, or message in priority order
           const aiContent = response.narrative || response.reply || response.message || 'ได้ประมวลผลคำขอของคุณแล้ว';
+          
+          // Try to extract recommendations from response.actions
+          const recommendAction = response.actions?.find((a: any) => a.action === 'RECOMMEND_PLACES');
+          const recommendations = recommendAction?.recommendations || null;
+          
           const aiMessage: ChatMessage = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
             content: aiContent,
             language: language,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            actions: response.actions || null,
+            metadata: recommendations ? { recommendations } : null
           };
 
           setMessages(prev => [...prev, aiMessage]);
@@ -234,7 +391,7 @@ const Chat = () => {
         });
         
         // Navigate to trip planner
-        navigate(`/trip/${newTrip.id}`);
+        navigate(`/${language}/trip/${newTrip.id}`);
         toast.success(`เพิ่ม ${place.name} ในแผนการเดินทางแล้ว!`);
       } else {
         // Add to existing trip
@@ -474,7 +631,7 @@ const Chat = () => {
 
         if (hasDestinations || hasAddDestinationsAction) {
           console.log('🧭 AI finished planning, navigating to TripPlanner with trip ID:', currentTripId);
-          navigate(`/trip/${currentTripId}`);
+          navigate(`/${language}/trip/${currentTripId}`);
           toast.success('สร้างแผนการเดินทางแล้ว! กำลังนำคุณไปยังหน้าแผนการเดินทาง...');
         } else {
           console.log('⏳ AI still planning, staying in Chat for more interaction...');
@@ -499,7 +656,9 @@ const Chat = () => {
           role: message.role,
           content: message.content,
           language: message.language || 'th',
-          user_id: null // Use null instead of string for guest users
+          user_id: null, // Use null instead of string for guest users
+          actions: message.actions || null, // Save actions
+          metadata: message.metadata || null // Save metadata (recommendations)
         } as any);
 
       if (error) {
@@ -991,7 +1150,7 @@ Return only place names, one per line:`;
       await new Promise(resolve => setTimeout(resolve, 2500)); // เพิ่มจาก 1 วินาที เป็น 2.5 วินาที
 
       // Navigate to the new trip (only after everything is saved)
-      const navigationPath = `/trip/${newTrip.id}`;
+      const navigationPath = `/${language}/trip/${newTrip.id}`;
       console.log('🧭 Navigating to:', navigationPath);
       
       try {
@@ -1020,37 +1179,44 @@ Return only place names, one per line:`;
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <MessageCircle className="h-5 w-5" />
-                    AI Travel Assistant
+                    <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                      <img src="/TripsterAvatar.png" alt="Tripster AI" className="h-full w-full object-cover" />
+                    </div>
+                    {t('chat.aiTitle')}
                   </CardTitle>
                   <p className="text-sm text-gray-600">
-                    Tell me where you want to go and I'll help you plan the perfect itinerary!
+                    {t('chat.aiSubtitle')}
                   </p>
                 </div>
                   <div className="flex items-center gap-2">
+                    <div className="hidden sm:block">
+                      <LanguageSwitcher />
+                    </div>
+                    <div className="sm:hidden">
+                      <LanguageSwitcher />
+                    </div>
                   {tripId && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => navigate(`/trip/${tripId}`)}
+                      onClick={() => navigate(`/${language}/trip/${tripId}`)}
                       className="flex items-center gap-2"
                     >
                       <MapPin className="h-4 w-4" />
-                      ดูแผนการเดินทาง
+                      {t('chat.viewTrip')}
                     </Button>
                   )}
                   {loading && (
                     <div className="flex items-center gap-2 text-sm text-blue-600">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      {aiStatus === 'analyzing' && 'AI กำลังวิเคราะห์...'}
-                      {aiStatus === 'creating_trip' && 'AI กำลังสร้างทริป...'}
-                      {aiStatus === 'adding_destinations' && 'AI กำลังเพิ่มสถานที่...'}
-                      {aiStatus === 'processing' && 'AI กำลังประมวลผล...'}
-                      {aiStatus === 'completed' && 'AI เสร็จสิ้น!'}
-                      {aiStatus === 'idle' && 'AI กำลังวางแผน...'}
+                      {aiStatus === 'analyzing' && t('chat.status.analyzing')}
+                      {aiStatus === 'creating_trip' && t('chat.status.creating')}
+                      {aiStatus === 'adding_destinations' && t('chat.status.adding')}
+                      {aiStatus === 'processing' && t('chat.status.processing')}
+                      {aiStatus === 'completed' && t('chat.status.completed')}
+                      {aiStatus === 'idle' && t('chat.status.idle')}
                     </div>
                   )}
-                <LanguageSwitcher />
                   </div>
                 </div>
                 
@@ -1097,59 +1263,189 @@ Return only place names, one per line:`;
               <div className="space-y-4">
                 {messages.length === 0 && (
                   <div className="text-center py-8">
-                    <MessageCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                    <img src="/TripsterAvatar.png" alt="Tripster AI" className="mx-auto h-20 w-20 rounded-full object-cover mb-4 shadow-lg" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      สวัสดี! 👋
+                      {t('chat.empty.heading')}
                     </h3>
                     <p className="text-gray-600 mb-4">
-                      ผมคือ AI Travel Assistant ที่จะช่วยวางแผนการเดินทางให้คุณ
+                      {t('chat.empty.description')}
                     </p>
                     {tripId && (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                         <p className="text-sm text-blue-700">
-                          💡 <strong>เคล็ดลับ:</strong> ตอบคำถาม AI ให้ครบถ้วน เพื่อให้ได้แผนการเดินทางที่สมบูรณ์
+                          {t('chat.empty.tip')}
                         </p>
                       </div>
                     )}
                     <div className="space-y-2">
-                      <p className="text-sm text-gray-500">ลองถามผมดู เช่น:</p>
+                      <p className="text-sm text-gray-500">{t('chat.empty.sampleLabel')}</p>
                       <div className="flex flex-wrap gap-2 justify-center">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleSend('ฉันอยากไปเที่ยวกรุงเทพ 3 วัน')}
-                        >
-                          เที่ยวกรุงเทพ 3 วัน
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleSend('แนะนำสถานที่เที่ยวในเชียงใหม่')}
-                        >
-                          เที่ยวเชียงใหม่
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleSend('วางแผนเที่ยวญี่ปุ่น')}
-                        >
-                          เที่ยวญี่ปุ่น
-                        </Button>
+                        {starterPrompts.map((prompt) => (
+                          <Button 
+                            key={prompt.label}
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleSend(prompt.message)}
+                          >
+                            {prompt.label}
+                          </Button>
+                        ))}
                       </div>
                     </div>
                   </div>
                 )}
 
                 {messages.map((message) => (
-                  <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} gap-2`}>
+                    {message.role === 'assistant' && (
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden mt-1">
+                        <img src="/TripsterAvatar.png" alt="AI" className="w-full h-full object-cover" />
+                      </div>
+                    )}
                     <div className={`max-w-[80%] p-4 rounded-lg ${
                       message.role === 'user' 
                         ? 'bg-blue-500 text-white' 
                         : 'bg-white border shadow-sm'
                     }`}>
                       <p className="whitespace-pre-wrap">{message.content}</p>
+                      
+                      {/* Show recommendations if available */}
+                      {message.metadata?.recommendations && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" />
+                            {t('chat.recommendations.title')}
+                          </p>
+                          {message.metadata.recommendations.map((rec: any, idx: number) => (
+                            <div 
+                              key={idx}
+                              className="bg-gray-50 p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <MapPin className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                                    <h4 className="font-semibold text-sm text-gray-900">{rec.name}</h4>
+                                  </div>
+                                  {rec.description && (
+                                    <p className="text-xs text-gray-600 mt-1 ml-6">{rec.description}</p>
+                                  )}
+                                  
+                                  {/* Place Type Badge */}
+                                  <div className="flex items-center gap-2 mt-1 ml-6">
+                                    <Badge variant="outline" className="text-xs">
+                                      {rec.type === 'tourist_attraction' && t('suggestedPlaces.type.attraction')}
+                                      {rec.type === 'restaurant' && t('suggestedPlaces.type.restaurant')}
+                                      {rec.type === 'lodging' && t('suggestedPlaces.type.lodging')}
+                                    </Badge>
+                                  </div>
+                                  
+                                  {/* Enhanced Place Details (if available from API) */}
+                                  {(rec.rating || rec.price_level || rec.opening_hours || rec.phone_number || rec.website) && (
+                                    <div className="mt-2 ml-6 space-y-1">
+                                      {/* Rating */}
+                                      {rec.rating && (
+                                        <div className="flex items-center gap-1 text-xs text-gray-600">
+                                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                                          <span className="font-medium">{rec.rating.toFixed(1)}</span>
+                                          {rec.user_ratings_total && (
+                                            <span className="text-gray-400">({rec.user_ratings_total} {t('chat.reviews')})</span>
+                                          )}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Price Level */}
+                                      {rec.price_level !== null && rec.price_level !== undefined && (
+                                        <div className="flex items-center gap-1 text-xs text-gray-600">
+                                          <DollarSign className="h-3 w-3 text-green-500" />
+                                          <span>
+                                            {(language === 'th' ? '฿' : '$').repeat(rec.price_level || 1)}
+                                          </span>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Opening Hours */}
+                                      {rec.opening_hours && rec.opening_hours.open_now !== undefined && (
+                                        <div className="flex items-center gap-1 text-xs">
+                                          <Badge 
+                                            variant={rec.opening_hours.open_now ? 'default' : 'secondary'}
+                                            className="h-4 px-1.5 text-xs"
+                                          >
+                                            {rec.opening_hours.open_now ? t('chat.open.now') : t('chat.open.closed')}
+                                          </Badge>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Phone */}
+                                      {rec.phone_number && (
+                                        <div className="flex items-center gap-1 text-xs">
+                                          <span className="text-blue-600">{rec.phone_number}</span>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Website */}
+                                      {rec.website && (
+                                        <div className="flex items-center gap-1 text-xs">
+                                          <a 
+                                            href={rec.website}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            {t('chat.website')}
+                                          </a>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs h-7 px-2 hover:bg-blue-50 hover:border-blue-300"
+                                  onClick={async () => {
+                                    if (!tripId) {
+                                      toast.error('กรุณาสร้างทริปก่อน');
+                                      return;
+                                    }
+                                    try {
+                                      // Add destination via AI action
+                                      const addAction = {
+                                        action: 'ADD_DESTINATIONS',
+                                        destinations: [{
+                                          name: rec.name,
+                                          place_type: rec.type || 'tourist_attraction',
+                                          description: rec.description
+                                        }]
+                                      };
+                                      await applyAIActions(tripId, { actions: [addAction] });
+                                      toast.success(`เพิ่ม ${rec.name} เข้าทริปแล้ว!`);
+                                      
+                                      // Reload trip to update UI
+                                      const updatedTrip = await tripService.getTrip(tripId);
+                                      if (updatedTrip?.destinations) {
+                                        // Update parent component if callback exists
+                                        console.log('✅ Destination added, trip reloaded');
+                                      }
+                                    } catch (error) {
+                                      console.error('Error adding recommendation:', error);
+                                      toast.error('เกิดข้อผิดพลาดในการเพิ่มสถานที่');
+                                    }
+                                  }}
+                                >
+                                  {t('suggestedPlaces.addWithPlus')}
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
                       <p className="text-xs opacity-70 mt-1">
-                        {new Date(message.created_at!).toLocaleTimeString('th-TH')}
+                        {message.created_at
+                          ? new Date(message.created_at).toLocaleTimeString(timeLocale, { hour: '2-digit', minute: '2-digit' })
+                          : ''}
                       </p>
                     </div>
                   </div>
@@ -1160,7 +1456,7 @@ Return only place names, one per line:`;
                     <div className="bg-white border shadow-sm p-4 rounded-lg">
                       <div className="flex items-center space-x-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-sm text-gray-600">AI กำลังคิด...</span>
+                        <span className="text-sm text-gray-600">{t('chat.aiThinking')}</span>
                       </div>
                     </div>
                   </div>
@@ -1171,7 +1467,7 @@ Return only place names, one per line:`;
                   <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                     <h3 className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
                       <MapPin className="h-4 w-4" />
-                      สถานที่แนะนำ
+                      {t('suggestedPlaces.title')}
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {suggestedPlaces.map((place, index) => (
@@ -1188,9 +1484,13 @@ Return only place names, one per line:`;
                                   </div>
                                 )}
                                 <Badge variant="outline" className="text-xs">
-                                  {place.suggested_type === 'restaurant' ? '🍽️ ร้านอาหาร' :
-                                   place.suggested_type === 'lodging' ? '🏨 ที่พัก' :
-                                   place.suggested_type === 'tourist_attraction' ? '🏛️ ที่เที่ยว' : place.suggested_type}
+                                  {place.suggested_type === 'restaurant'
+                                    ? t('suggestedPlaces.type.restaurant')
+                                    : place.suggested_type === 'lodging'
+                                      ? t('suggestedPlaces.type.lodging')
+                                      : place.suggested_type === 'tourist_attraction'
+                                        ? t('suggestedPlaces.type.attraction')
+                                        : place.suggested_type}
                                 </Badge>
                               </div>
                             </div>
@@ -1200,7 +1500,7 @@ Return only place names, one per line:`;
                               onClick={() => handleAddSuggestedPlaceToTrip(place)}
                               className="ml-2 h-8 text-xs"
                             >
-                              เพิ่ม
+                              {t('suggestedPlaces.add')}
                             </Button>
                           </div>
                         </div>
@@ -1218,7 +1518,7 @@ Return only place names, one per line:`;
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="ถามเกี่ยวกับแผนการเดินทางของคุณ..."
+                placeholder={t('chat.placeholder')}
                 onKeyPress={handleKeyPress}
                 disabled={loading}
                 className="flex-1"
@@ -1240,19 +1540,19 @@ Return only place names, one per line:`;
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <Card className="w-full max-w-md mx-4">
                 <CardHeader>
-                  <CardTitle className="text-center">🎉 แผนการเดินทางพร้อมแล้ว!</CardTitle>
+                  <CardTitle className="text-center">{t('loginPrompt.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-center text-gray-600">
-                    เพื่อบันทึกแผนการเดินทางของคุณ ผมแนะนำให้เข้าสู่ระบบก่อน
+                    {t('loginPrompt.description')}
                   </p>
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-500">จะได้:</p>
+                    <p className="text-sm text-gray-500">{t('loginPrompt.benefits')}</p>
                     <ul className="text-sm text-gray-600 space-y-1">
-                      <li>✅ บันทึกแผนไว้ดูใหม่ได้</li>
-                      <li>✅ แชร์กับเพื่อน/ครอบครัว</li>
-                      <li>✅ ส่งออกเป็น PDF</li>
-                      <li>✅ AI จำความชอบของคุณ</li>
+                      <li>{t('loginPrompt.benefit.save')}</li>
+                      <li>{t('loginPrompt.benefit.share')}</li>
+                      <li>{t('loginPrompt.benefit.export')}</li>
+                      <li>{t('loginPrompt.benefit.remember')}</li>
                     </ul>
                   </div>
                   <div className="flex space-x-2">
@@ -1260,14 +1560,14 @@ Return only place names, one per line:`;
                       className="flex-1"
                       onClick={() => setShowLoginModal(true)}
                     >
-                      เข้าสู่ระบบ
+                      {t('loginPrompt.login')}
                     </Button>
                     <Button 
                       variant="outline" 
                       className="flex-1"
                       onClick={handleSkipLogin}
                     >
-                      ข้าม - ดูแผนต่อ
+                      {t('loginPrompt.skip')}
                     </Button>
                   </div>
                 </CardContent>
@@ -1280,22 +1580,22 @@ Return only place names, one per line:`;
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="w-full max-w-md mx-4">
                 <div className="bg-white rounded-lg p-6">
-                  <h2 className="text-xl font-bold mb-4 text-center">เข้าสู่ระบบ</h2>
+                  <h2 className="text-xl font-bold mb-4 text-center">{t('auth.loginHeading')}</h2>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2">อีเมล</label>
+                      <label className="block text-sm font-medium mb-2">{t('auth.email')}</label>
                       <input
                         type="email"
                         className="w-full p-2 border border-gray-300 rounded-md"
-                        placeholder="your@email.com"
+                        placeholder={t('auth.emailPlaceholder')}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">รหัสผ่าน</label>
+                      <label className="block text-sm font-medium mb-2">{t('auth.password')}</label>
                       <input
                         type="password"
                         className="w-full p-2 border border-gray-300 rounded-md"
-                        placeholder="รหัสผ่านของคุณ"
+                        placeholder={t('auth.passwordPlaceholder')}
                       />
                     </div>
                     <div className="flex space-x-2">
@@ -1303,13 +1603,13 @@ Return only place names, one per line:`;
                         className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600"
                         onClick={handleLoginSuccess}
                       >
-                        เข้าสู่ระบบ
+                        {t('auth.login')}
                       </button>
                       <button
                         className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600"
                         onClick={() => setShowLoginModal(false)}
                       >
-                        ยกเลิก
+                        {t('auth.cancel')}
                       </button>
                     </div>
                   </div>
@@ -1319,6 +1619,15 @@ Return only place names, one per line:`;
           )}
         </div>
       </div>
+      
+      {/* Location Change Dialog */}
+      <LocationChangeDialog
+        open={showLocationChangeDialog}
+        oldLocation={previousLocation || ''}
+        newLocation={pendingNewLocation}
+        onChoice={handleLocationChoice}
+        onUndo={handleUndo}
+      />
     </div>
   );
 };

@@ -302,13 +302,45 @@ export const tripService = {
   }): Promise<void> {
     console.log('📝 tripService.updateTripInfo: Updating trip info:', updates);
     
+    // 1. Fetch current trip to calculate dates
+    const { data: currentTrip, error: fetchError } = await supabase
+      .from('trips')
+      .select('start_date, end_date')
+      .eq('id', tripId)
+      .single();
+
+    if (fetchError || !currentTrip) {
+      throw new Error(`Failed to fetch trip for update: ${fetchError?.message || 'Trip not found'}`);
+    }
+
     const updateData: any = {};
+    let newStartDateStr = updates.start_date || currentTrip.start_date;
     
-    if (updates.days !== undefined) updateData.days = Number(updates.days);
-    if (updates.start_date) updateData.start_date = updates.start_date;
+    // Calculate duration in ms
+    // If days provided, use it. Else calculate from current start/end (or default 1)
+    let days = updates.days;
+    if (!days) {
+      const start = new Date(currentTrip.start_date).getTime();
+      const end = new Date(currentTrip.end_date).getTime();
+      const diff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      days = Math.max(1, diff + 1); // +1 because same day is 1 day duration
+    }
+
+    if (updates.start_date || updates.days) {
+       const startDate = new Date(newStartDateStr);
+       const endDate = new Date(startDate);
+       // end = start + (days - 1)
+       endDate.setDate(startDate.getDate() + (days - 1));
+       
+       updateData.start_date = startDate.toISOString().split('T')[0];
+       updateData.end_date = endDate.toISOString().split('T')[0];
+    }
+
     if (updates.budget_min !== undefined) updateData.budget_min = Number(updates.budget_min);
     if (updates.budget_max !== undefined) updateData.budget_max = Number(updates.budget_max);
 
+    // Do NOT update 'days' column as it doesn't exist
+    
     const { error } = await supabase
       .from('trips')
       .update(updateData)

@@ -24,6 +24,27 @@ export interface RouteSegment {
   isEstimated: boolean; // true if using Haversine formula fallback
 }
 
+export interface DistanceValidationResult {
+  valid: boolean;
+  distance: number;
+  severity: 'ok' | 'warning' | 'error';
+  message?: string;
+  canOverride: boolean;
+}
+
+export interface DailyTimeEstimate {
+  totalHours: number;
+  breakdown: {
+    visiting: number;    // Hours spent at attractions
+    travel: number;      // Hours spent traveling between places
+    meals: number;       // Hours spent at meals
+    buffer: number;      // Buffer time for unexpected delays
+  };
+  isOverLimit: boolean;
+  missingComponents: string[]; // e.g., ['lodging', 'restaurant']
+  warnings: string[];
+}
+
 interface DirectionsAPIResponse {
   routes: Array<{
     legs: Array<{
@@ -605,6 +626,229 @@ export class RouteOptimizationService {
     }
 
     return optimized;
+  }
+
+  /**
+   * Validate distance between two destinations
+   * @param distance Distance in kilometers
+   * @param userAdded Whether the destination was manually added by user
+   * @returns Validation result with severity and message
+   */
+  validateDistance(distance: number, userAdded: boolean = false): DistanceValidationResult {
+    // If user manually added, allow override even if distance is large
+    if (userAdded && distance > 20) {
+      return {
+        valid: true,
+        distance,
+        severity: 'warning',
+        message: `⚠️ ระยะทาง ${distance.toFixed(1)} กม. ค่อนข้างไกล (ขับรถประมาณ ${Math.round(distance / 40 * 60)} นาที)`,
+        canOverride: true
+      };
+    }
+
+    // Green zone: 0-20 km (recommended limit)
+    if (distance <= 20) {
+      return {
+        valid: true,
+        distance,
+        severity: 'ok',
+        canOverride: true
+      };
+    }
+
+    // Red zone: > 20 km (hard block - AI shouldn't suggest, but user can override)
+    return {
+      valid: false,
+      distance,
+      severity: 'error',
+      message: `❌ ระยะทาง ${distance.toFixed(1)} กม. เกินขีดจำกัดที่แนะนำ (20 กม.) - ใช้เวลาขับรถประมาณ ${Math.round(distance / 40 * 60)} นาที`,
+      canOverride: true // User can still add manually
+    };
+  }
+
+  /**
+   * Estimate total time needed for a day's itinerary
+   * @param destinations List of destinations for the day
+   * @returns Time estimate breakdown and validation
+   */
+  async estimateDailyTime(destinations: Destination[]): Promise<DailyTimeEstimate> {
+    const warnings: string[] = [];
+    const missingComponents: string[] = [];
+
+    // Check for required components
+    const hasLodging = destinations.some(d => d.place_type === 'lodging');
+    const hasRestaurant = destinations.some(d => d.place_type === 'restaurant');
+    const hasAttraction = destinations.some(d => d.place_type === 'tourist_attraction');
+
+    if (!hasLodging) missingComponents.push('lodging');
+    if (!hasRestaurant) missingComponents.push('restaurant');
+    if (!hasAttraction) missingComponents.push('tourist_attraction');
+
+    // Calculate time breakdown
+    let visitingTime = 0;
+    let travelTime = 0;
+    let mealsTime = 0;
+
+    // Estimate visiting time for each destination
+    for (const dest of destinations) {
+      if (dest.place_type === 'tourist_attraction') {
+        // Use minHours if available, otherwise default to 1.5 hours
+        visitingTime += dest.minHours || 1.5;
+      } else if (dest.place_type === 'restaurant') {
+        // Meals typically take 1-1.5 hours
+        mealsTime += 1.25;
+      }
+      // Lodging doesn't count towards daily activity time
+    }
+
+    // Calculate travel time between destinations
+    const routeData = await this.calculateRouteDistanceReal(
+      destinations.filter(d => d.latitude && d.longitude)
+    );
+    travelTime = routeData.totalDuration / 60; // Convert minutes to hours
+
+    // Add buffer time (15 minutes per transition)
+    const bufferTime = (destinations.length - 1) * 0.25; // 15 min = 0.25 hours
+
+    const totalHours = visitingTime + travelTime + mealsTime + bufferTime;
+
+    // Generate warnings based on new 6-8 hour constraints
+    if (totalHours > 8) {
+      warnings.push(`❌ แผนวันนี้ใช้เวลา ${totalHours.toFixed(1)} ชั่วโมง (เกินขีดจำกัด 8 ชั่วโมง) - ควรลดจำนวนสถานที่`);
+    } else if (totalHours > 6) {
+      warnings.push(`⚠️ แผนวันนี้ใช้เวลา ${totalHours.toFixed(1)} ชั่วโมง (เกือบถึงขีดจำกัด 6-8 ชั่วโมง)`);
+    }
+
+    if (destinations.filter(d => d.place_type === 'tourist_attraction').length > 4) {
+      warnings.push('⚠️ สถานที่ท่องเที่ยวมากเกินไป (ควรไม่เกิน 4 แห่ง) อาจทำให้รีบเร่งและเหนื่อย');
+    }
+
+    if (mealsTime < 1) {
+      warnings.push('⚠️ ควรเพิ่มร้านอาหารอย่างน้อย 1 ร้าน');
+    }
+
+    return {
+      totalHours,
+      breakdown: {
+        visiting: visitingTime,
+        travel: travelTime,
+        meals: mealsTime,
+        buffer: bufferTime
+      },
+      isOverLimit: totalHours > 8,
+      missingComponents,
+      warnings
+    };
+  }
+
+  /**
+   * Validate that a day's plan has all necessary components
+   * @param destinations List of destinations for the day
+   * @returns Validation result with missing components
+   */
+  validateDailyPlan(destinations: Destination[]): {
+    isComplete: boolean;
+    missingComponents: string[];
+    suggestions: string[];
+  } {
+    const missingComponents: string[] = [];
+    const suggestions: string[] = [];
+
+    const hasLodging = destinations.some(d => d.place_type === 'lodging');
+    const hasRestaurant = destinations.some(d => d.place_type === 'restaurant');
+    const hasAttraction = destinations.some(d => d.place_type === 'tourist_attraction');
+
+    if (!hasLodging) {
+      missingComponents.push('lodging');
+      suggestions.push('🏨 เพิ่มที่พัก');
+    }
+
+    if (!hasRestaurant) {
+      missingComponents.push('restaurant');
+      suggestions.push('🍽️ เพิ่มร้านอาหาร');
+    }
+
+    if (!hasAttraction) {
+      missingComponents.push('tourist_attraction');
+      suggestions.push('🏛️ เพิ่มสถานที่ท่องเที่ยว');
+    }
+
+    return {
+      isComplete: missingComponents.length === 0,
+      missingComponents,
+      suggestions
+    };
+  }
+
+  /**
+   * 🎯 Context-Aware Scheduling: Find the best day for a new location
+   * Based on geographic proximity to existing destinations
+   * @param newPlace - New place coordinates { latitude, longitude }
+   * @param currentDestinations - Array of existing destinations
+   * @returns Recommended day, reason, and distance to closest place (or null if not applicable)
+   */
+  findBestDayForLocation(
+    newPlace: { latitude: number; longitude: number },
+    currentDestinations: Destination[]
+  ): { day: number; reason: string; distance: number } | null {
+    // Validate inputs
+    if (!newPlace.latitude || !newPlace.longitude || currentDestinations.length === 0) {
+      return null;
+    }
+
+    // Group destinations by day (only those with valid coordinates)
+    const destinationsByDay: Record<number, Destination[]> = {};
+    currentDestinations.forEach(d => {
+      const day = d.visit_date || 1;
+      if (d.latitude && d.longitude) {
+        if (!destinationsByDay[day]) destinationsByDay[day] = [];
+        destinationsByDay[day].push(d);
+      }
+    });
+
+    // If no destinations have coordinates, can't calculate
+    if (Object.keys(destinationsByDay).length === 0) {
+      return null;
+    }
+
+    let bestDay = 1;
+    let minDistance = Infinity;
+    let closestPlace: string = '';
+
+    // Find the closest place across all days
+    for (const [dayStr, dayDests] of Object.entries(destinationsByDay)) {
+      const day = parseInt(dayStr);
+      
+      for (const dest of dayDests) {
+        const dist = this.calculateDistance(
+          newPlace.latitude, 
+          newPlace.longitude,
+          dest.latitude!, 
+          dest.longitude!
+        );
+        
+        if (dist < minDistance) {
+          minDistance = dist;
+          bestDay = day;
+          closestPlace = dest.name;
+        }
+      }
+    }
+
+    // Threshold for "nearby" recommendation (updated to 20 km limit)
+    const NEARBY_THRESHOLD_KM = 20;
+    
+    if (minDistance <= NEARBY_THRESHOLD_KM) {
+      // Within recommended limit - strong recommendation
+      return { 
+        day: bestDay, 
+        reason: `อยู่ใกล้ "${closestPlace}" ในวันที่ ${bestDay} (${minDistance.toFixed(1)} กม.)`,
+        distance: minDistance
+      };
+    }
+
+    // Too far (> 20 km) - don't recommend
+    return null;
   }
 }
 

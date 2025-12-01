@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MessageCircle, Send, Loader2, MapPin } from 'lucide-react';
 import { useAppState, appActions, useChat, useTrip, useUI, useError } from '@/context/AppContext';
+import { useLanguage } from '@/hooks/useLanguage';
 import { aiService, tripService, errorService } from '@/services/enhancedServices';
 import { ChatMessage } from '@/types/database';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ const EnhancedChat: React.FC = () => {
   const { currentTrip, tripId } = useTrip();
   const { currentPage } = useUI();
   const { error } = useError();
+  const { language } = useLanguage();
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -44,10 +46,10 @@ const EnhancedChat: React.FC = () => {
   useEffect(() => {
     if (aiProcessingState === 'completed' && currentTrip?.destinations?.length > 0) {
       console.log('🧭 AI planning completed, navigating to TripPlanner');
-      navigate(`/trip/${tripId}`);
+      navigate(`/${language}/trip/${tripId}`);
       toast.success('สร้างแผนการเดินทางแล้ว! กำลังนำคุณไปยังหน้าแผนการเดินทาง...');
     }
-  }, [aiProcessingState, currentTrip, tripId, navigate]);
+  }, [aiProcessingState, currentTrip, tripId, navigate, language]);
 
   const handleSend = async (message: string) => {
     if (!message.trim() || aiProcessing) return;
@@ -228,7 +230,7 @@ const EnhancedChat: React.FC = () => {
 
   const handleViewTrip = () => {
     if (tripId) {
-      navigate(`/trip/${tripId}`);
+      navigate(`/${language}/trip/${tripId}`);
     }
   };
 
@@ -241,7 +243,9 @@ const EnhancedChat: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <MessageCircle className="h-5 w-5" />
+                    <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                      <img src="/TripsterAvatar.png" alt="Tripster AI" className="h-full w-full object-cover" />
+                    </div>
                     AI Travel Assistant
                   </CardTitle>
                   <p className="text-sm text-gray-600">
@@ -276,7 +280,7 @@ const EnhancedChat: React.FC = () => {
               <div className="space-y-4">
                 {chatMessages.length === 0 && (
                   <div className="text-center py-8">
-                    <MessageCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                    <img src="/TripsterAvatar.png" alt="Tripster AI" className="mx-auto h-16 w-16 rounded-full object-cover mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
                       สวัสดี! 👋
                     </h3>
@@ -322,8 +326,13 @@ const EnhancedChat: React.FC = () => {
                 {chatMessages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} gap-2`}
                   >
+                    {message.role === 'assistant' && (
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden mt-1">
+                        <img src="/TripsterAvatar.png" alt="AI" className="w-full h-full object-cover" />
+                      </div>
+                    )}
                     <div
                       className={`max-w-[80%] rounded-lg px-4 py-2 ${
                         message.role === 'user'
@@ -331,7 +340,7 @@ const EnhancedChat: React.FC = () => {
                           : 'bg-gray-100 text-gray-900'
                       }`}
                     >
-                      <p className="text-sm">{message.content}</p>
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                     </div>
                   </div>
                 ))}

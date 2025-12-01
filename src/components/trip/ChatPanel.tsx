@@ -9,6 +9,8 @@ import { aiService, applyAIActions, validateAIResponse } from '@/services/aiServ
 import { tripService } from '@/services/tripService';
 import { databaseSyncService } from '@/services/databaseSyncService';
 import { authService } from '@/services/authService';
+import { routeOptimizationService } from '@/services/routeOptimizationService';
+import { geocodingService } from '@/services/geocodingService';
 import { useAIConfig } from '@/config/aiConfig';
 import { extractPlacesFromNarrative, searchPlacesForExtractedNames } from '@/services/narrativeExtractionService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,6 +21,10 @@ import { toast } from 'sonner';
 import { findProvincesInText, getProvinceByAlias } from '@/data/provinces';
 import { supabase } from '@/lib/unifiedSupabaseClient';
 import { ChatMessage, Destination } from '@/types/database';
+import { LocationChangeDialog, LocationChangeChoice } from '@/components/LocationChangeDialog';
+import { DaySelectionDialog } from '@/components/DaySelectionDialog';
+import { PlaceResolveLoadingModal } from '@/components/PlaceResolveLoadingModal';
+import { detectLanguage, type Language } from '@/hooks/useLanguage';
 
 interface ChatPanelProps {
   tripId?: string;
@@ -44,10 +50,32 @@ const ChatPanel = ({
   const [aiStepMessage, setAiStepMessage] = useState('');
   const [travelStyle, setTravelStyle] = useState<string>('');
   const [budget, setBudget] = useState<string>('');
+  
+  // Geocoding Loading States
+  const [showGeocodingModal, setShowGeocodingModal] = useState(false);
+  const [geocodingCurrent, setGeocodingCurrent] = useState(0);
+  const [geocodingTotal, setGeocodingTotal] = useState(0);
+  const [geocodingCurrentPlace, setGeocodingCurrentPlace] = useState('');
+  const [geocodingFailedPlaces, setGeocodingFailedPlaces] = useState<string[]>([]);
   const [travelType, setTravelType] = useState<'family' | 'couple' | 'solo' | 'friends'>('couple');
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Location change detection
+  const [previousLocation, setPreviousLocation] = useState<string | null>(null);
+  const [showLocationChangeDialog, setShowLocationChangeDialog] = useState(false);
+  const [pendingActions, setPendingActions] = useState<any[]>([]);
+  const [pendingNewLocation, setPendingNewLocation] = useState('');
+  
+  // Day selection for recommendations
+  const [showDaySelection, setShowDaySelection] = useState(false);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<any>(null);
+  const [tripDayCount, setTripDayCount] = useState(1);
+  const [dayRecommendation, setDayRecommendation] = useState<{
+    day: number;
+    reason: string;
+  } | null>(null);
   
   // Get AI config from context
   const { config: aiConfig, updateProvider, updateModel, getAvailableModels } = useAIConfig();
@@ -113,6 +141,31 @@ const ChatPanel = ({
       setMessages([welcomeMessage]);
     }
   }, [tripId]);
+
+  // Initialize previousLocation from existing destinations
+  useEffect(() => {
+    const initializePreviousLocation = async () => {
+      if (tripId && !previousLocation) {
+        try {
+          console.log('🔍 Initializing previousLocation from existing destinations...');
+          const destinations = await databaseSyncService.loadDestinations(tripId);
+          
+          if (destinations.length > 0 && destinations[0].formatted_address) {
+            // Extract location from first destination's formatted_address
+            const location = destinations[0].formatted_address.split(',').pop()?.trim();
+            if (location) {
+              console.log(`📍 Initialized previousLocation: ${location}`);
+              setPreviousLocation(location);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error initializing previousLocation:', error);
+        }
+      }
+    };
+
+    initializePreviousLocation();
+  }, [tripId, previousLocation]);
 
   // [ลบ] useEffect นี้ซ้ำกับ useEffect ข้างบน
   // useEffect(() => {
@@ -260,14 +313,242 @@ const ChatPanel = ({
     }
   };
 
+  // Normalize location name for comparison
+  const normalizeLocation = (location: string): string => {
+    return location
+      .replace(/^จังหวัด/, '')  // Remove "จังหวัด" prefix
+      .replace(/\s+/g, '')       // Remove spaces
+      .toLowerCase()
+      .trim();
+  };
+
+  // Detect location change in AI actions or user message
+  const detectLocationChange = (actions: any[], userMessage: string): boolean => {
+    // Try to find location_context from actions
+    let newLocation = null;
+    
+    // Check RECOMMEND_PLACES first
+    const recommendAction = actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
+    if (recommendAction?.location_context) {
+      newLocation = recommendAction.location_context;
+    }
+    
+    // Check ADD_DESTINATIONS if no RECOMMEND_PLACES
+    if (!newLocation) {
+      const addAction = actions.find((a: any) => a.action === 'ADD_DESTINATIONS');
+      if (addAction?.location_context) {
+        newLocation = addAction.location_context;
+      }
+    }
+    
+    // Fallback: extract from user message
+    if (!newLocation && userMessage) {
+      const provinces = findProvincesInText(userMessage);
+      if (provinces.length > 0) {
+        newLocation = provinces[0].name; // Extract name from province object
+      }
+    }
+    
+    console.log('🔍 Location Detection:', {
+      newLocation,
+      previousLocation,
+      tripId: !!tripId,
+      hasPreviousLocation: !!previousLocation
+    });
+    
+    if (!newLocation) {
+      console.log('⚠️ No new location detected');
+      return false;
+    }
+
+    // If we have a trip but no previous location, set it first
+    if (tripId && !previousLocation) {
+      console.log(`📍 Setting initial location for existing trip: ${newLocation}`);
+      setPreviousLocation(newLocation);
+      return false;
+    }
+
+    // Check if location changed (with normalization for better matching)
+    if (previousLocation && tripId) {
+      const normalizedPrevious = normalizeLocation(previousLocation);
+      const normalizedNew = normalizeLocation(newLocation);
+      
+      console.log('🔍 Comparing locations:', {
+        previous: previousLocation,
+        new: newLocation,
+        normalizedPrevious,
+        normalizedNew,
+        isDifferent: normalizedPrevious !== normalizedNew
+      });
+      
+      if (normalizedPrevious !== normalizedNew) {
+        console.log(`🗺️ Location change detected: ${previousLocation} → ${newLocation}`);
+        console.log(`   From actions:`, actions.map(a => a.action).join(', '));
+        console.log(`   User message:`, userMessage);
+        setPendingNewLocation(newLocation);
+        return true;
+      } else {
+        console.log('✅ Same location, no change detected');
+      }
+    }
+    
+    // Update previous location if no trip exists yet (first time)
+    if (!previousLocation && !tripId) {
+      console.log(`📍 Setting initial location (no trip yet): ${newLocation}`);
+      setPreviousLocation(newLocation);
+    }
+    
+    return false;
+  };
+
+  // Handle location change choice
+  const handleLocationChoice = async (choice: 'new-trip' | 'add-location' | 'cancel') => {
+    setShowLocationChangeDialog(false);
+
+    if (choice === 'cancel') {
+      setPendingActions([]);
+      setPendingNewLocation('');
+      setLoading(false);
+      toast.info('ยกเลิกการเปลี่ยนปลายทาง');
+      return;
+    }
+
+    if (choice === 'new-trip') {
+      // Delete all destinations from current trip before creating new one
+      toast.success(`สร้างทริปใหม่: ${pendingNewLocation}`);
+      
+      try {
+        // Delete all destinations
+        if (tripId) {
+          console.log('🗑️ Deleting all destinations from trip:', tripId);
+          const { data: destinations, error: fetchError } = await supabase
+            .from('destinations')
+            .select('id')
+            .eq('trip_id', tripId);
+          
+          if (fetchError) {
+            console.error('Error fetching destinations:', fetchError);
+          } else if (destinations && destinations.length > 0) {
+            const { error: deleteError } = await supabase
+              .from('destinations')
+              .delete()
+              .eq('trip_id', tripId);
+            
+            if (deleteError) {
+              console.error('Error deleting destinations:', deleteError);
+            } else {
+              console.log('✅ Deleted all destinations:', destinations.length);
+            }
+          }
+        }
+        
+        // Update location and reload
+        setPreviousLocation(pendingNewLocation);
+        
+        // Process new actions immediately after clearing
+        if (pendingActions.length > 0 && tripId) {
+          console.log('📍 Processing new location actions:', pendingActions.length);
+          
+          // Count total destinations to geocode
+          const totalPlaces = pendingActions.reduce((sum, action) => {
+            if (action.action === 'ADD_DESTINATIONS' && action.destinations) {
+              return sum + action.destinations.length;
+            }
+            return sum;
+          }, 0);
+          
+          // Show geocoding modal
+          setGeocodingTotal(totalPlaces);
+          setGeocodingCurrent(0);
+          setGeocodingCurrentPlace('');
+          setGeocodingFailedPlaces([]);
+          setShowGeocodingModal(true);
+          
+          // Set up progress callbacks
+          const onGeocodingProgress = (current: number, total: number, placeName: string) => {
+            setGeocodingCurrent(current);
+            setGeocodingTotal(total);
+            setGeocodingCurrentPlace(placeName);
+          };
+          
+          const onGeocodingFailed = (placeName: string) => {
+            setGeocodingFailedPlaces(prev => [...prev, placeName]);
+          };
+          
+          // Sync with progress tracking
+          await databaseSyncService.syncAIActions(pendingActions, tripId, {
+            onGeocodingProgress,
+            onGeocodingFailed
+          });
+          
+          // Hide modal
+          setShowGeocodingModal(false);
+          
+          const newDestinations = await databaseSyncService.loadDestinations(tripId);
+          if (onDestinationsUpdate) {
+            onDestinationsUpdate(newDestinations);
+          }
+        }
+        
+        // Clear pending data
+        setPendingActions([]);
+        setPendingNewLocation('');
+        setLoading(false);
+        
+        toast.success('สร้างทริปใหม่เรียบร้อย!');
+      } catch (error) {
+        console.error('Error creating new trip:', error);
+        toast.error('เกิดข้อผิดพลาดในการสร้างทริปใหม่');
+        setLoading(false);
+      }
+      return;
+    } else if (choice === 'add-location') {
+      // Update location (allowing multi-destination)
+      setPreviousLocation(`${previousLocation}, ${pendingNewLocation}`);
+      
+      // Process pending actions with existing trip
+      if (pendingActions.length > 0 && tripId) {
+        toast.success(`เพิ่ม ${pendingNewLocation} เข้าทริปเดิม`);
+        try {
+          await databaseSyncService.syncAIActions(pendingActions, tripId);
+          const destinations = await databaseSyncService.loadDestinations(tripId);
+          if (onDestinationsUpdate) {
+            onDestinationsUpdate(destinations);
+          }
+        } catch (error) {
+          console.error('Error processing pending actions:', error);
+          toast.error('เกิดข้อผิดพลาดในการเพิ่มสถานที่');
+        }
+      }
+    }
+
+    // Clear pending data
+    setPendingActions([]);
+    setPendingNewLocation('');
+    setLoading(false);
+  };
+
+  // Handle undo
+  const handleUndo = () => {
+    setShowLocationChangeDialog(false);
+    setPendingActions([]);
+    setPendingNewLocation('');
+    setLoading(false);
+    toast.info('ยกเลิกการเปลี่ยนปลายทาง');
+  };
+
   const handleSend = async (message: string) => {
     if (!message.trim() || loading) return;
+
+    // Auto-detect language from user message
+    const detectedLanguage: Language = detectLanguage(message);
+    console.log('🌍 Detected language:', detectedLanguage, 'from message:', message.substring(0, 50));
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
       content: message,
-      language: 'th',
+      language: detectedLanguage, // Use detected language instead of hardcoded 'th'
       created_at: new Date().toISOString()
     };
 
@@ -283,9 +564,11 @@ const ChatPanel = ({
     try {
       console.log('🤖 Sending message to AI:', message);
       
-      // Extract day from message for AI context
-      const dayMatch = message.match(/วันที่(\d+)/);
-      const extractedDay = dayMatch ? parseInt(dayMatch[1]) : null;
+      // Extract day from message for AI context (support both Thai and English)
+      const dayMatchTh = message.match(/วันที่(\d+)/);
+      const dayMatchEn = message.match(/day\s*(\d+)/i);
+      const extractedDay = dayMatchTh ? parseInt(dayMatchTh[1]) : 
+                          dayMatchEn ? parseInt(dayMatchEn[1]) : null;
       
       const history = messages.map(m => ({ role: m.role, content: m.content }));
       const provider: 'openai' | 'claude' | 'gemini' = 
@@ -299,6 +582,7 @@ const ChatPanel = ({
       const context = { 
         tripId, 
         history,
+        language: detectedLanguage, // Pass detected language to AI
         ...(extractedDay && { day: extractedDay }), // Add day context if found
         // Add AI config parameters
         provider,
@@ -414,16 +698,23 @@ const ChatPanel = ({
             
             if (validatedResponse) {
               // Use reply from validated response, or fallback to response.reply/narrative
-              const aiContent = validatedResponse.reply || response.reply || response.narrative || response.message || 'ได้ประมวลผลคำขอของคุณแล้ว';
-              const aiMessage: ChatMessage = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: aiContent,
-                language: 'th',
-                created_at: new Date().toISOString()
-              };
-              
-              setMessages(prev => [...prev, aiMessage]);
+            const aiContent = validatedResponse.reply || response.reply || response.narrative || response.message || 'ได้ประมวลผลคำขอของคุณแล้ว';
+            
+            // Extract recommendations from RECOMMEND_PLACES action
+            const recommendAction: any = validatedResponse.actions?.find((a: any) => a.action === 'RECOMMEND_PLACES');
+            const recommendations = recommendAction?.recommendations || null;
+            
+            const aiMessage: ChatMessage = {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: aiContent,
+              language: 'th',
+              created_at: new Date().toISOString(),
+              actions: validatedResponse.actions, // Store actions
+              metadata: recommendations ? { recommendations } : null // Store recommendations
+            };
+            
+            setMessages(prev => [...prev, aiMessage]);
               
               // Save messages to database
               if (tripId && !user) {
@@ -454,12 +745,19 @@ const ChatPanel = ({
           if (validatedResponse) {
             // Use reply from validated response, or fallback to response.reply/narrative
             const aiContent = validatedResponse.reply || response.reply || response.narrative || response.message || 'ได้ประมวลผลคำขอของคุณแล้ว';
+            
+            // Extract recommendations from RECOMMEND_PLACES action
+            const recommendAction: any = validatedResponse.actions?.find((a: any) => a.action === 'RECOMMEND_PLACES');
+            const recommendations = recommendAction?.recommendations || null;
+            
             const aiMessage: ChatMessage = {
               id: (Date.now() + 1).toString(),
               role: 'assistant',
               content: aiContent,
               language: 'th',
-              created_at: new Date().toISOString()
+              created_at: new Date().toISOString(),
+              actions: validatedResponse.actions, // Store actions
+              metadata: recommendations ? { recommendations } : null // Store recommendations
             };
 
             setMessages(prev => [...prev, aiMessage]);
@@ -481,11 +779,35 @@ const ChatPanel = ({
             // Process AI actions
             if (validatedResponse.actions && validatedResponse.actions.length > 0) {
               console.log('🎯 Processing AI actions:', validatedResponse.actions);
+              
+              // Check for location change
+              if (detectLocationChange(validatedResponse.actions, message)) {
+                // Store pending actions and show dialog
+                const actionsWithContext = validatedResponse.actions.map(action => ({
+                  ...action,
+                  ...(extractedDay && { day: extractedDay })
+                }));
+                setPendingActions(actionsWithContext);
+                setShowLocationChangeDialog(true);
+                // Don't process actions yet, wait for user choice
+                setLoading(false);
+                return;
+              }
+              
               const actionsWithContext = validatedResponse.actions.map(action => ({
                 ...action,
                 ...(extractedDay && { day: extractedDay })
               }));
               await processAIActions(actionsWithContext, tripId);
+              
+              // Update previous location after processing actions successfully
+              const recommendAction: any = validatedResponse.actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
+              const addAction: any = validatedResponse.actions.find((a: any) => a.action === 'ADD_DESTINATIONS');
+              const newLocation = recommendAction?.location_context || addAction?.location_context;
+              if (newLocation) {
+                console.log(`📍 Updating previousLocation to: ${newLocation}`);
+                setPreviousLocation(newLocation);
+              }
             }
           } else {
             console.error('❌ AI response validation failed');
@@ -533,7 +855,9 @@ const ChatPanel = ({
           content: message.content,
           language: message.language || 'th',
           user_id: null, // Use null for guest users
-          created_at: message.created_at || new Date().toISOString()
+          created_at: message.created_at || new Date().toISOString(),
+          actions: message.actions || null, // Save actions
+          metadata: message.metadata || null // Save metadata (recommendations)
         } as any)
         .select()
         .single();
@@ -570,6 +894,125 @@ const ChatPanel = ({
     } catch (error) {
       console.error('❌ Error processing AI actions:', error);
       toast.error('เกิดข้อผิดพลาดในการประมวลผล AI actions');
+    }
+  };
+
+  // Add recommendation to trip (with day selection)
+  const addRecommendationToTrip = async (recommendation: any, day: number) => {
+    if (!tripId) {
+      toast.error('กรุณาสร้างทริปก่อน');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log(`📍 Adding recommendation "${recommendation.name}" to day ${day}`);
+      
+      const action = {
+        action: 'ADD_DESTINATIONS',
+        destinations: [{
+          name: recommendation.name,
+          place_type: recommendation.type || 'tourist_attraction',
+          description: recommendation.description
+        }],
+        day: day // Specify target day
+      };
+      
+      await processAIActions([action], tripId);
+      toast.success(`✅ เพิ่ม ${recommendation.name} เข้าวันที่ ${day} แล้ว`);
+    } catch (error) {
+      console.error('Error adding recommendation:', error);
+      toast.error('เกิดข้อผิดพลาดในการเพิ่มสถานที่');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle add recommendation button click
+  const handleAddRecommendation = async (recommendation: any) => {
+    if (!tripId) {
+      toast.error('กรุณาสร้างทริปก่อน');
+      return;
+    }
+    
+    try {
+      // Load current destinations to check day count and location context
+      const destinations = await databaseSyncService.loadDestinations(tripId);
+      const dayCount = destinations.length > 0
+        ? Math.max(...destinations.map(d => d.visit_date || 1))
+        : 1;
+      
+      console.log(`📅 Current trip has ${dayCount} day(s)`);
+      
+      // Get location context from existing destinations
+      const locationContext = destinations.length > 0 && destinations[0].formatted_address
+        ? destinations[0].formatted_address.split(',').pop()?.trim()
+        : undefined;
+      
+      // 🔍 Geocode recommendation if it doesn't have coordinates
+      if (!recommendation.latitude || !recommendation.longitude) {
+        console.log('🔍 Geocoding recommendation:', recommendation.name);
+        try {
+          const geocodeResult = await geocodingService.geocodeDestination(
+            recommendation.name,
+            locationContext
+          );
+          
+          if (geocodeResult) {
+            recommendation.latitude = geocodeResult.latitude;
+            recommendation.longitude = geocodeResult.longitude;
+            console.log('✅ Geocoded successfully:', geocodeResult);
+          } else {
+            console.warn('⚠️ Could not geocode recommendation');
+          }
+        } catch (error) {
+          console.error('❌ Geocoding error:', error);
+        }
+      }
+      
+      // Update state for dialog
+      setTripDayCount(dayCount);
+      
+      if (dayCount > 1) {
+        // 🚀 Smart Suggestion: Find best day based on proximity
+        let suggestedDay: number | null = null;
+        let suggestionReason: string = '';
+        
+        // Check if recommendation has coordinates (from geocoding)
+        if (recommendation.latitude && recommendation.longitude) {
+          const bestMatch = routeOptimizationService.findBestDayForLocation(
+            { 
+              latitude: recommendation.latitude, 
+              longitude: recommendation.longitude 
+            },
+            destinations
+          );
+          
+          if (bestMatch) {
+            suggestedDay = bestMatch.day;
+            suggestionReason = bestMatch.reason;
+            
+            console.log('✨ Smart suggestion:', bestMatch);
+          }
+        } else {
+          console.log('⚠️ No coordinates available for smart suggestion');
+        }
+        
+        // Set recommendation data
+        setDayRecommendation(
+          suggestedDay ? { day: suggestedDay, reason: suggestionReason } : null
+        );
+        
+        // Show dialog
+        setSelectedRecommendation(recommendation);
+        setShowDaySelection(true);
+      } else {
+        // Single day - add directly
+        await addRecommendationToTrip(recommendation, 1);
+      }
+    } catch (error) {
+      console.error('Error handling add recommendation:', error);
+      toast.error('เกิดข้อผิดพลาดในการเพิ่มสถานที่');
     }
   };
 
@@ -620,12 +1063,24 @@ const ChatPanel = ({
   ];
 
   return (
-    <Card>
-      <CardHeader>
+    <>
+      {/* Location Change Dialog */}
+      <LocationChangeDialog
+        open={showLocationChangeDialog}
+        oldLocation={previousLocation || ''}
+        newLocation={pendingNewLocation}
+        onChoice={handleLocationChoice}
+        onUndo={handleUndo}
+      />
+      
+      <Card className="h-full flex flex-col overflow-hidden">
+      <CardHeader className="shrink-0">
         <div className="flex items-center justify-between">
           <div>
         <CardTitle className="flex items-center gap-2">
-          <MessageCircle className="h-5 w-5" />
+          <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+            <img src="/TripsterAvatar.png" alt="Tripster AI" className="h-full w-full object-cover" />
+          </div>
           Chat with AI
         </CardTitle>
         <p className="text-sm text-gray-600">
@@ -668,12 +1123,11 @@ const ChatPanel = ({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+      <CardContent className="flex-1 min-h-0 overflow-hidden p-0">
+        <div className="h-full flex flex-col p-6 pt-0">
           {/* Messages */}
           <div 
-            className="overflow-y-auto space-y-3"
-            style={{ height }}
+            className="flex-1 overflow-y-auto space-y-3 min-h-0 pr-2"
           >
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -686,8 +1140,8 @@ const ChatPanel = ({
                 }`}>
                   <div className="flex items-start gap-2">
                     {message.role === 'assistant' && (
-                      <div className="flex-shrink-0 w-6 h-6 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
-                        <Sparkles className="h-3 w-3 text-white" />
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full overflow-hidden">
+                        <img src="/TripsterAvatar.png" alt="Tripster AI" className="w-full h-full object-cover" />
                       </div>
                     )}
                     {message.role === 'user' && (
@@ -707,6 +1161,48 @@ const ChatPanel = ({
                     )}
                     <div className="flex-1">
                       <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                      
+                      {/* Show recommendations if available */}
+                      {message.metadata?.recommendations && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs font-semibold text-gray-700 mb-2">✨ คำแนะนำสถานที่:</p>
+                          {message.metadata.recommendations.map((rec: any, idx: number) => (
+                            <div 
+                              key={idx}
+                              className="bg-white p-3 rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-sm transition-all"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <MapPin className="h-4 w-4 text-purple-500 flex-shrink-0" />
+                                    <h4 className="font-semibold text-sm text-gray-900">{rec.name}</h4>
+                                  </div>
+                                  {rec.description && (
+                                    <p className="text-xs text-gray-600 mt-1 ml-6">{rec.description}</p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-1 ml-6">
+                                    <Badge variant="outline" className="text-xs">
+                                      {rec.type === 'tourist_attraction' && '🏛️ สถานที่ท่องเที่ยว'}
+                                      {rec.type === 'restaurant' && '🍽️ ร้านอาหาร'}
+                                      {rec.type === 'lodging' && '🏨 ที่พัก'}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs h-7 px-2 hover:bg-purple-50 hover:border-purple-300"
+                                  onClick={() => handleAddRecommendation(rec)}
+                                  disabled={loading}
+                                >
+                                  + เพิ่ม
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
                       <p className="text-xs opacity-70 mt-1">
                         {new Date(message.created_at!).toLocaleTimeString('th-TH')}
                       </p>
@@ -787,7 +1283,7 @@ const ChatPanel = ({
 
           {/* Quick Start Templates */}
           {messages.length <= 1 && (
-            <div className="space-y-3">
+            <div className="space-y-3 mt-auto pt-4 shrink-0">
               <h4 className="text-sm font-medium text-gray-700">🚀 เริ่มต้นง่ายๆ:</h4>
               <div className="grid grid-cols-2 gap-2">
                 {quickStartTemplates.map((template, index) => (
@@ -826,7 +1322,7 @@ const ChatPanel = ({
           )} */}
 
           {/* Input */}
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 mt-4 pt-2 shrink-0">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -886,6 +1382,31 @@ const ChatPanel = ({
         )}
       </CardContent>
     </Card>
+
+    {/* Day Selection Dialog */}
+    <DaySelectionDialog
+      open={showDaySelection}
+      onClose={() => {
+        setShowDaySelection(false);
+        setSelectedRecommendation(null);
+        setDayRecommendation(null);
+      }}
+      onSelectDay={(day) => addRecommendationToTrip(selectedRecommendation, day)}
+      placeName={selectedRecommendation?.name || ''}
+      totalDays={tripDayCount}
+      recommendedDay={dayRecommendation?.day}
+      recommendationReason={dayRecommendation?.reason}
+    />
+
+    {/* Place Resolve Loading Modal */}
+    <PlaceResolveLoadingModal
+      open={showGeocodingModal}
+      current={geocodingCurrent}
+      total={geocodingTotal}
+      currentPlaceName={geocodingCurrentPlace}
+      failedPlaces={geocodingFailedPlaces}
+    />
+    </>
   );
 };
 

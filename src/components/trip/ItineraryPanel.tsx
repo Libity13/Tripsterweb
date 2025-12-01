@@ -8,12 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { GripVertical, MapPin, Clock, DollarSign, Star, Trash2, Edit, Calendar, ExternalLink, Image, Plus, List, Grid3X3, Navigation, TrendingDown } from 'lucide-react';
+import { GripVertical, MapPin, Clock, DollarSign, Star, Trash2, Edit, Calendar, ExternalLink, Image, Plus, List, Grid3X3, Navigation, TrendingDown, AlertTriangle, CheckCircle, Info, Phone, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { databaseSyncService } from '@/services/databaseSyncService';
 import { routeOptimizationService } from '@/services/routeOptimizationService';
 import { supabase } from '@/lib/unifiedSupabaseClient';
 import { Destination } from '@/types/database';
+import { RouteOptimizationModal } from '@/components/RouteOptimizationModal';
+import { RouteOptimizationLoadingModal } from '@/components/RouteOptimizationLoadingModal';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface ItineraryPanelProps {
   destinations: Destination[];
@@ -270,17 +273,6 @@ const SortableItem = ({
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onEdit(destination);
-                }}
-                className="h-6 w-6 p-0"
-              >
-                <Edit className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
                   onRemove(destination.id);
                 }}
                 className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
@@ -311,6 +303,19 @@ const ItineraryPanel = ({
 }: ItineraryPanelProps) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number>(1);
+  const [dailyTimeEstimates, setDailyTimeEstimates] = useState<Map<number, any>>(new Map());
+  
+  // Route Optimization Modal state
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [showOptimizationModal, setShowOptimizationModal] = useState(false);
+  const [optimizationData, setOptimizationData] = useState<{
+    dayNumber: number;
+    originalRoute: Destination[];
+    optimizedRoute: Destination[];
+    originalDistance: number;
+    optimizedDistance: number;
+    savings: { distance: number; time: number; percentage: number };
+  } | null>(null);
 
   // Calculate number of days
   const calculateDays = () => {
@@ -359,6 +364,35 @@ const ItineraryPanel = ({
     const dayCost = dayDestinations.reduce((sum, dest) => sum + (dest.estimated_cost || 0), 0);
     return { duration: dayDuration, cost: dayCost };
   };
+
+  // Calculate daily time estimates and validations
+  useEffect(() => {
+    const calculateDailyEstimates = async () => {
+      const estimates = new Map();
+      
+      for (let day = 1; day <= totalDays; day++) {
+        const dayDestinations = getDestinationsForDay(day);
+        
+        if (dayDestinations.length > 0) {
+          try {
+            const timeEstimate = await routeOptimizationService.estimateDailyTime(dayDestinations);
+            const planValidation = routeOptimizationService.validateDailyPlan(dayDestinations);
+            
+            estimates.set(day, {
+              timeEstimate,
+              planValidation
+            });
+          } catch (error) {
+            console.error(`Error calculating estimates for day ${day}:`, error);
+          }
+        }
+      }
+      
+      setDailyTimeEstimates(estimates);
+    };
+
+    calculateDailyEstimates();
+  }, [destinations, totalDays]);
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -386,8 +420,15 @@ const ItineraryPanel = ({
     const draggedDay = draggedDestination.visit_date || 1;
     const targetDay = targetDestination.visit_date || 1;
     
+    // CRITICAL: Only allow dragging within the same day
+    // Cross-day moves should be done via the "Move to Day X" button
+    if (draggedDay !== targetDay) {
+      toast.error(`ไม่สามารถลากข้ามวันได้ กรุณาใช้ปุ่ม "ย้ายไปวันที่ ${targetDay}" แทน`);
+      return;
+    }
+    
     // Determine if moving across days
-    const movedToDifferentDay = draggedDay !== targetDay;
+    const movedToDifferentDay = false; // Always false now since we block cross-day drags
     
     if (import.meta.env.DEV) {
       console.log('🔄 Drag & Drop:', {
@@ -507,19 +548,63 @@ const ItineraryPanel = ({
     }
 
     try {
-      toast.loading('กำลัง optimize เส้นทาง... (กำลังคำนวณระยะทางจริง)', { id: 'optimize-route' });
+      // Show loading modal
+      setShowLoadingModal(true);
+      
+      // Calculate current route distance
+      const originalRouteData = await routeOptimizationService.calculateRouteDistanceReal(dayDestinations);
+      const originalDistanceKm = originalRouteData.totalDistance;
       
       // Use smart optimization with real Google Directions API distances
       const optimized = await routeOptimizationService.smartOptimizeRouteReal(dayDestinations);
       
+      // Calculate savings
+      const savedDistance = optimized.improvements.savedDistance;
+      const savedTime = Math.round(optimized.improvements.savedTime);
+      const percentage = originalDistanceKm > 0 
+        ? (savedDistance / originalDistanceKm) * 100 
+        : 0;
+      
+      // Hide loading modal
+      setShowLoadingModal(false);
+      
+      // Store optimization data and show result modal
+      setOptimizationData({
+        dayNumber: day,
+        originalRoute: dayDestinations,
+        optimizedRoute: optimized.destinations,
+        originalDistance: originalDistanceKm,
+        optimizedDistance: originalDistanceKm - savedDistance,
+        savings: {
+          distance: savedDistance,
+          time: savedTime,
+          percentage: percentage
+        }
+      });
+      
+      setShowOptimizationModal(true);
+      
+    } catch (error) {
+      console.error('❌ Error optimizing route:', error);
+      setShowLoadingModal(false);
+      toast.error('เกิดข้อผิดพลาดในการคำนวณเส้นทาง');
+    }
+  };
+
+  const confirmOptimization = async () => {
+    if (!optimizationData) return;
+
+    try {
+      const { dayNumber, optimizedRoute } = optimizationData;
+      
       // Update order_index for optimized destinations
-      const updatedDayDestinations = optimized.destinations.map((dest, index) => ({
+      const updatedDayDestinations = optimizedRoute.map((dest, index) => ({
         ...dest,
         order_index: index + 1
       }));
       
       // Merge with other days
-      const otherDaysDestinations = destinations.filter(d => (d.visit_date || 1) !== day);
+      const otherDaysDestinations = destinations.filter(d => (d.visit_date || 1) !== dayNumber);
       const newDestinations = [...otherDaysDestinations, ...updatedDayDestinations].sort((a, b) => {
         const dayA = a.visit_date || 1;
         const dayB = b.visit_date || 1;
@@ -534,17 +619,17 @@ const ItineraryPanel = ({
         await databaseSyncService.syncDestinationsOrder(newDestinations, tripId);
       }
       
-      const distanceInfo = optimized.useRealDistances 
-        ? `ระยะทางจริง ${optimized.improvements.savedDistance.toFixed(1)} km`
-        : `ประมาณ ${optimized.improvements.savedDistance.toFixed(1)} km`;
-      
       toast.success(
-        `✨ Optimize สำเร็จ! ประหยัด${distanceInfo} (${Math.round(optimized.improvements.savedTime)} นาที)`,
-        { id: 'optimize-route', duration: 5000 }
+        `✨ ปรับเส้นทางสำเร็จ! ประหยัด ${optimizationData.savings.distance.toFixed(1)} km (${optimizationData.savings.time} นาที)`,
+        { duration: 5000 }
       );
+      
+      setShowOptimizationModal(false);
+      setOptimizationData(null);
+      
     } catch (error) {
-      console.error('❌ Error optimizing route:', error);
-      toast.error('เกิดข้อผิดพลาดในการ optimize เส้นทาง', { id: 'optimize-route' });
+      console.error('❌ Error applying optimization:', error);
+      toast.error('เกิดข้อผิดพลาดในการปรับเส้นทาง');
     }
   };
 
@@ -552,8 +637,30 @@ const ItineraryPanel = ({
   const totalCost = destinations.reduce((sum, dest) => sum + dest.estimated_cost, 0);
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader>
+    <>
+      {/* Loading Modal */}
+      <RouteOptimizationLoadingModal open={showLoadingModal} />
+      
+      {/* Route Optimization Result Modal */}
+      {optimizationData && (
+        <RouteOptimizationModal
+          open={showOptimizationModal}
+          onClose={() => {
+            setShowOptimizationModal(false);
+            setOptimizationData(null);
+          }}
+          onConfirm={confirmOptimization}
+          dayNumber={optimizationData.dayNumber}
+          originalRoute={optimizationData.originalRoute}
+          optimizedRoute={optimizationData.optimizedRoute}
+          originalDistance={optimizationData.originalDistance}
+          optimizedDistance={optimizationData.optimizedDistance}
+          savings={optimizationData.savings}
+        />
+      )}
+      
+      <Card className="h-full flex flex-col overflow-hidden">
+      <CardHeader className="shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5" />
@@ -595,7 +702,7 @@ const ItineraryPanel = ({
           </div>
         )}
       </CardHeader>
-      <CardContent className="flex-1 overflow-hidden">
+      <CardContent className="flex-1 min-h-0 overflow-hidden p-0">
         {destinations.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <MapPin className="mx-auto h-12 w-12 mb-4 text-gray-300" />
@@ -654,6 +761,81 @@ const ItineraryPanel = ({
                           </div>
                         </div>
                       </CardHeader>
+
+                      {/* Daily Time Summary & Warnings */}
+                      {dayDestinations.length > 0 && dailyTimeEstimates.get(i + 1) && (
+                        <div className="px-6 py-3 bg-gray-50 border-t border-b">
+                          {(() => {
+                            const estimates = dailyTimeEstimates.get(i + 1);
+                            const { timeEstimate, planValidation } = estimates;
+                            
+                            return (
+                              <div className="space-y-2">
+                                {/* Time Breakdown */}
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Clock className="h-4 w-4 text-gray-600" />
+                                    <span className="font-medium">เวลารวม: {timeEstimate.totalHours.toFixed(1)} ชั่วโมง</span>
+                                    {timeEstimate.isOverLimit && (
+                                      <Badge variant="destructive" className="ml-2">
+                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                        เกินเวลาแนะนำ
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Progress Bar */}
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                      <div 
+                                        className={`h-full ${
+                                          timeEstimate.totalHours > 8 ? 'bg-red-500' : 
+                                          timeEstimate.totalHours > 6 ? 'bg-yellow-500' : 
+                                          'bg-green-500'
+                                        }`}
+                                        style={{ width: `${Math.min((timeEstimate.totalHours / 10) * 100, 100)}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-gray-500">{timeEstimate.totalHours.toFixed(1)}/8h</span>
+                                  </div>
+                                </div>
+
+                                {/* Time Breakdown Details */}
+                                <div className="grid grid-cols-4 gap-2 text-xs text-gray-600">
+                                  <div>🏛️ ท่องเที่ยว: {timeEstimate.breakdown.visiting.toFixed(1)}h</div>
+                                  <div>🚗 เดินทาง: {timeEstimate.breakdown.travel.toFixed(1)}h</div>
+                                  <div>🍽️ อาหาร: {timeEstimate.breakdown.meals.toFixed(1)}h</div>
+                                  <div>⏱️ Buffer: {timeEstimate.breakdown.buffer.toFixed(1)}h</div>
+                                </div>
+
+                                {/* Missing Components Warning */}
+                                {!planValidation.isComplete && (
+                                  <div className="flex items-start gap-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                    <Info className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                                    <div className="text-xs text-yellow-800">
+                                      <span className="font-medium">แผนยังไม่สมบูรณ์:</span> 
+                                      {' '}ควรเพิ่ม {planValidation.suggestions.join(', ')}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Warnings */}
+                                {timeEstimate.warnings.length > 0 && (
+                                  <div className="space-y-1">
+                                    {timeEstimate.warnings.map((warning: string, idx: number) => (
+                                      <div key={idx} className="flex items-start gap-2 text-xs text-orange-700">
+                                        <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                                        <span>{warning}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+
                       <CardContent>
                         {dayDestinations.length === 0 ? (
                           <div className="text-center py-4 text-gray-400">
@@ -673,63 +855,155 @@ const ItineraryPanel = ({
                         ) : (
                           <div className="space-y-3">
                             {dayDestinations.map((destination, index) => (
-                              <div key={destination.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
-                                    {index + 1}
-                                  </div>
-                                  <div className="text-sm text-gray-500">
-                                    {9 + index * 2}:00
-                                  </div>
-                                </div>
-                                <div className="flex-1">
-                                  <h3 className="font-medium text-gray-900">{destination.name}</h3>
-                                  <p className="text-sm text-gray-600">{destination.description}</p>
-                                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                                    {destination.rating > 0 && (
-                                      <div className="flex items-center gap-1">
-                                        <Star className="h-3 w-3 text-yellow-500" />
-                                        <span>{destination.rating}</span>
-                                      </div>
-                                    )}
-                                    {destination.estimated_cost > 0 && (
-                                      <div className="flex items-center gap-1">
-                                        <DollarSign className="h-3 w-3 text-green-500" />
-                                        <span>฿{destination.estimated_cost}</span>
-                                      </div>
-                                    )}
-                                    <div className="flex items-center gap-1">
-                                      <Clock className="h-3 w-3 text-blue-500" />
-                                      <span>{destination.visit_duration} นาที</span>
+                              <div key={destination.id}>
+                                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                                      {index + 1}
+                                    </div>
+                                    <div className="text-sm text-gray-500">
+                                      {9 + index * 2}:00
                                     </div>
                                   </div>
+                                  <div className="flex-1">
+                                    <h3 className="font-medium text-gray-900">{destination.name}</h3>
+                                    <p className="text-sm text-gray-600">{destination.description}</p>
+                                    
+                                    {/* Basic Info */}
+                                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                                      {destination.rating && destination.rating > 0 && (
+                                        <div className="flex items-center gap-1">
+                                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                                          <span className="font-medium">{destination.rating.toFixed(1)}</span>
+                                          {destination.user_ratings_total && (
+                                            <span className="text-gray-400">({destination.user_ratings_total})</span>
+                                          )}
+                                        </div>
+                                      )}
+                                      {destination.price_level !== null && destination.price_level !== undefined && (
+                                        <div className="flex items-center gap-1">
+                                          <DollarSign className="h-3 w-3 text-green-500" />
+                                          <span>{'฿'.repeat(destination.price_level || 1)}</span>
+                                        </div>
+                                      )}
+                                      {destination.estimated_cost && destination.estimated_cost > 0 && (
+                                        <div className="flex items-center gap-1">
+                                          <DollarSign className="h-3 w-3 text-green-500" />
+                                          <span>฿{destination.estimated_cost}</span>
+                                        </div>
+                                      )}
+                                      {destination.visit_duration && (
+                                        <div className="flex items-center gap-1">
+                                          <Clock className="h-3 w-3 text-blue-500" />
+                                          <span>{destination.visit_duration} นาที</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Enhanced Place Details */}
+                                    {(destination.opening_hours || destination.phone_number || destination.website) && (
+                                      <div className="mt-2 space-y-1">
+                                        {/* Opening Hours */}
+                                        {destination.opening_hours && (
+                                          <div className="flex items-center gap-1 text-xs">
+                                            <Clock className="h-3 w-3 text-gray-400" />
+                                            {(destination.opening_hours as any).open_now !== undefined ? (
+                                              <Badge 
+                                                variant={(destination.opening_hours as any).open_now ? 'default' : 'secondary'}
+                                                className="h-4 px-1.5 text-xs"
+                                              >
+                                                {(destination.opening_hours as any).open_now ? '🟢 เปิดอยู่' : '🔴 ปิดแล้ว'}
+                                              </Badge>
+                                            ) : (
+                                              <span className="text-gray-500">เวลาเปิด-ปิด: ดูรายละเอียด</span>
+                                            )}
+                                          </div>
+                                        )}
+                                        
+                                        {/* Phone Number */}
+                                        {destination.phone_number && (
+                                          <div className="flex items-center gap-1 text-xs">
+                                            <Phone className="h-3 w-3 text-gray-400" />
+                                            <a 
+                                              href={`tel:${destination.phone_number}`}
+                                              className="text-blue-600 hover:underline"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              {destination.phone_number}
+                                            </a>
+                                          </div>
+                                        )}
+                                        
+                                        {/* Website */}
+                                        {destination.website && (
+                                          <div className="flex items-center gap-1 text-xs">
+                                            <Globe className="h-3 w-3 text-gray-400" />
+                                            <a 
+                                              href={destination.website}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-blue-600 hover:underline"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              เว็บไซต์
+                                            </a>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleClick(destination)}
+                                      className="h-8 w-8 p-0"
+                                    >
+                                      <MapPin className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleRemove(destination.id)}
+                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleClick(destination)}
-                                    className="h-8 w-8 p-0"
-                                  >
-                                    <MapPin className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleEdit(destination)}
-                                    className="h-8 w-8 p-0"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleRemove(destination.id)}
-                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
+
+                                {/* Distance indicator to next destination */}
+                                {index < dayDestinations.length - 1 && (() => {
+                                  const nextDest = dayDestinations[index + 1];
+                                  if (destination.latitude && destination.longitude && nextDest.latitude && nextDest.longitude) {
+                                    const distance = routeOptimizationService.calculateDistance(
+                                      destination.latitude,
+                                      destination.longitude,
+                                      nextDest.latitude,
+                                      nextDest.longitude
+                                    );
+                                    const validation = routeOptimizationService.validateDistance(distance, false);
+                                    
+                                    return (
+                                      <div className="flex items-center justify-center my-2">
+                                        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${
+                                          validation.severity === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+                                          validation.severity === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                                          'bg-green-50 text-green-700 border border-green-200'
+                                        }`}>
+                                          <Navigation className="h-3 w-3" />
+                                          <span>{distance.toFixed(1)} กม.</span>
+                                          <span className="text-gray-500">•</span>
+                                          <span>{Math.round((distance / 40) * 60)} นาที</span>
+                                          {validation.message && (
+                                            <span className="ml-1">{validation.message.split(' ')[0]}</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             ))}
                           </div>
@@ -750,7 +1024,7 @@ const ItineraryPanel = ({
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={destinations.map(dest => dest.id)}
+              items={getDestinationsForDay(selectedDay).map(dest => dest.id)}
               strategy={verticalListSortingStrategy}
             >
               <div className="h-full flex flex-col">
@@ -918,6 +1192,7 @@ const ItineraryPanel = ({
         )}
       </CardContent>
     </Card>
+    </>
   );
 };
 

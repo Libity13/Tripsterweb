@@ -117,6 +117,22 @@ export const authService = {
     }
   },
 
+  // Update user profile (display_name, avatar_url, etc.)
+  async updateProfile(updates: { display_name?: string; avatar_url?: string }): Promise<{ user?: User; error?: any }> {
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        data: updates
+      });
+
+      if (error) throw error;
+
+      return { user: data.user as User };
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      return { error };
+    }
+  },
+
   // Migrate guest trips to authenticated user
   async migrateGuestTrips(guestId: string, userId: string): Promise<void> {
     try {
