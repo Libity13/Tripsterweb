@@ -473,36 +473,77 @@ export class DatabaseSyncService {
                 }
               }
               
-              // 🆕 ถ้า AI ไม่ระบุ day มา ให้กระจายสถานที่อัตโนมัติตามจำนวนวันของทริป
-              let shouldDistribute = !targetDay;
+              // 🆕 ALWAYS fetch trip info to get totalTripDays for Clamp
               let totalTripDays = 1;
               
-              if (shouldDistribute) {
-                // Get trip info to calculate total days
-                try {
-                  const { data: trip, error } = await supabase
-                    .from('trips')
-                    .select('start_date, end_date')
-                    .eq('id', tripId)
-                    .single();
-                  
-                  if (!error && trip?.start_date && trip?.end_date) {
-                    const start = new Date(trip.start_date);
-                    const end = new Date(trip.end_date);
-                    totalTripDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-                    console.log(`📅 Trip has ${totalTripDays} days, will distribute destinations evenly`);
-                  } else {
-                    console.warn('⚠️ Could not get trip dates, defaulting to 1 day');
-                    totalTripDays = 1;
-                    shouldDistribute = false;
-                  }
-                } catch (error) {
-                  console.error('❌ Error getting trip info:', error);
-                  shouldDistribute = false;
+              // Get trip info to calculate total days (ALWAYS needed for Clamp)
+              try {
+                const { data: trip, error } = await supabase
+                  .from('trips')
+                  .select('start_date, end_date')
+                  .eq('id', tripId)
+                  .single();
+                
+                if (!error && trip?.start_date && trip?.end_date) {
+                  const start = new Date(trip.start_date);
+                  const end = new Date(trip.end_date);
+                  totalTripDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                  console.log(`📅 Trip has ${totalTripDays} days`);
+                } else {
+                  console.warn('⚠️ Could not get trip dates, defaulting to 1 day');
+                  totalTripDays = 1;
                 }
+              } catch (error) {
+                console.error('❌ Error getting trip info:', error);
+                totalTripDays = 1;
               }
               
-              console.log('📅 Using target day:', targetDay || 'auto-distribute');
+              // 🧠 Smart Distribution Logic:
+              // - ถ้า destinations แต่ละตัวมี dest.day → ใช้ dest.day
+              // - ถ้าไม่มี dest.day และ มี action.day → ใช้ action.day (แต่ถ้า > 3 ตัว ควรกระจาย)
+              // - ถ้าไม่มีทั้งคู่ → กระจายอัตโนมัติ
+              
+              // Check if ANY destination has day specified
+              const hasDestDays = action.destinations.some((d: any) => d.day && typeof d.day === 'number');
+              
+              // 🆕 Check if destinations are ACTUALLY distributed across multiple days
+              // (not all in day 1 or all in same day)
+              const uniqueDays = new Set(
+                action.destinations
+                  .filter((d: any) => d.day && typeof d.day === 'number')
+                  .map((d: any) => d.day)
+              );
+              const isActuallyDistributed = uniqueDays.size > 1;
+              
+              // 🆕 Force distribute if:
+              // 1. No individual days specified, OR
+              // 2. All destinations have same day (not actually distributed), AND
+              // 3. There are more than 2 destinations, AND
+              // 4. Trip has multiple days
+              const shouldForceDistribute = (
+                !hasDestDays || // No days specified
+                (!isActuallyDistributed && hasDestDays) // All in same day
+              ) && action.destinations.length > 2 && totalTripDays > 1;
+              
+              const shouldDistribute = !targetDay || shouldForceDistribute;
+              
+              console.log('📅 Distribution check:', {
+                targetDay,
+                hasDestDays,
+                isActuallyDistributed,
+                uniqueDaysCount: uniqueDays.size,
+                destinationsCount: action.destinations.length,
+                totalTripDays,
+                shouldForceDistribute,
+                shouldDistribute,
+                reason: shouldForceDistribute 
+                  ? (hasDestDays && !isActuallyDistributed 
+                    ? '🔄 All destinations in same day - forcing distribution!'
+                    : '🔄 No individual days - forcing distribution!')
+                  : (isActuallyDistributed 
+                    ? '✅ Already distributed across multiple days'
+                    : '⚠️ Not forcing distribution')
+              });
               
               for (let i = 0; i < action.destinations.length; i++) {
                 const dest = action.destinations[i];
@@ -514,14 +555,27 @@ export class DatabaseSyncService {
                   callbacks.onGeocodingProgress(currentDestination, totalDestinations, placeName);
                 }
                 
-                // 🆕 Calculate visit_date: distribute evenly across trip days
-                let visitDate = targetDay;
-                if (shouldDistribute) {
-                  // แบ่งสถานที่เท่าๆ กันไปตามวัน (แบ่งแบบต่อเนื่อง)
+                // 🧠 Logic การเลือกวัน (เรียงลำดับความสำคัญ):
+                // 1. dest.day (วันที่ AI ระบุมากับสถานที่)
+                // 2. Smart Distribution (ถ้า shouldDistribute = true)
+                // 3. action.day (วันที่ระบุมากับกลุ่มคำสั่ง)
+                // 4. Fallback to day 1
+                let visitDate: number;
+                
+                if (dest.day && typeof dest.day === 'number') {
+                  // ✅ AI ระบุวันมากับสถานที่โดยตรง - ใช้เลย!
+                  visitDate = Math.min(dest.day, totalTripDays); // Clamp ไม่ให้เกิน
+                  console.log(`📅 Using dest.day=${dest.day} for "${placeName}" (clamped to ${visitDate})`);
+                } else if (shouldDistribute && totalTripDays > 1) {
+                  // 🆕 Smart Distribution - กระจายสถานที่ไปตามวัน
                   const destinationsPerDay = Math.ceil(action.destinations.length / totalTripDays);
                   visitDate = Math.floor(i / destinationsPerDay) + 1;
                   visitDate = Math.min(visitDate, totalTripDays); // ไม่เกินจำนวนวัน
-                } else if (!visitDate) {
+                  console.log(`📅 Auto-distributing "${placeName}" to day ${visitDate} (${i+1}/${action.destinations.length})`);
+                } else if (targetDay) {
+                  // ใช้วันจาก action.day (only if not force distributing)
+                  visitDate = Math.min(targetDay, totalTripDays);
+                } else {
                   visitDate = 1; // fallback
                 }
                 

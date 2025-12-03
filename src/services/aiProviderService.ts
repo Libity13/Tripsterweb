@@ -48,15 +48,6 @@ export const AI_MODELS: AIModel[] = [
     maxTokens: 128000,
     costPerToken: 0.000015
   },
-  {
-    id: 'gpt-3.5-turbo',
-    name: 'GPT-3.5 Turbo',
-    provider: 'openai',
-    description: 'Fast and efficient',
-    maxTokens: 16385,
-    costPerToken: 0.000002
-  },
-  
   // Gemini Models
   {
     id: 'gemini-2.0-flash-exp',
@@ -66,64 +57,33 @@ export const AI_MODELS: AIModel[] = [
     maxTokens: 1000000,
     costPerToken: 0.000001
   },
-  {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro',
-    provider: 'gemini',
-    description: 'Advanced reasoning and code generation',
-    maxTokens: 2000000,
-    costPerToken: 0.0000035
-  },
-  {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash',
-    provider: 'gemini',
-    description: 'Fast and efficient',
-    maxTokens: 1000000,
-    costPerToken: 0.00000075
-  },
   
-  // Claude Models
+  // Claude 4.5 Models (Latest)
   {
-    id: 'claude-sonnet-4-5-20250929',
-    name: 'Claude Sonnet 4.5',
+    id: 'claude-opus-4-5-20251101',
+    name: 'Claude Opus 4.5',
     provider: 'claude',
-    description: 'ใหม่ที่สุด, แรงที่สุด',
-    maxTokens: 200000,
-    costPerToken: 0.000003
-  },
-  {
-    id: 'claude-3-5-sonnet-20240620',
-    name: 'Claude 3.5 Sonnet',
-    provider: 'claude',
-    description: 'เสถียร, แนะนำใช้',
-    maxTokens: 200000,
-    costPerToken: 0.000003
-  },
-  {
-    id: 'claude-3-opus-20240229',
-    name: 'Claude 3 Opus',
-    provider: 'claude',
-    description: 'Claude 3 รุ่นใหญ่',
+    description: '🧠 ฉลาดที่สุด, งานซับซ้อน',
     maxTokens: 200000,
     costPerToken: 0.000015
   },
   {
-    id: 'claude-3-sonnet-20240229',
-    name: 'Claude 3 Sonnet',
+    id: 'claude-sonnet-4-5-20250929',
+    name: 'Claude Sonnet 4.5',
     provider: 'claude',
-    description: 'Claude 3 รุ่นกลาง',
+    description: '⭐ สมดุล ฉลาด+เร็ว (แนะนำ)',
     maxTokens: 200000,
     costPerToken: 0.000003
   },
   {
-    id: 'claude-3-haiku-20240307',
-    name: 'Claude 3 Haiku',
+    id: 'claude-haiku-4-5-20251001',
+    name: 'Claude Haiku 4.5',
     provider: 'claude',
-    description: 'Claude 3 รุ่นเล็ก, เร็ว',
+    description: '⚡ เร็วที่สุด, งานเบาๆ',
     maxTokens: 200000,
     costPerToken: 0.00000025
   },
+  
   
   // Mock Model
   {

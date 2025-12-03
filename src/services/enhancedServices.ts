@@ -139,8 +139,8 @@ export class EnhancedTripService implements BaseService {
         .insert([{
           title: tripData.title || 'ทริปใหม่',
           title_en: tripData.title_en || 'New Travel Plan',
-          description: tripData.description || 'ทริปที่สร้างจาก AI Chat',
-          description_en: tripData.description_en || 'Travel plan created from AI Chat',
+          description: tripData.description || 'ทริปที่สร้างจาก Tripster AI',
+          description_en: tripData.description_en || 'Travel plan created from Tripster AI',
           start_date: tripData.start_date || new Date().toISOString().split('T')[0],
           end_date: tripData.end_date || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           budget_max: tripData.budget_max || 10000,

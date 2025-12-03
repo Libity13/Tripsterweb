@@ -202,6 +202,32 @@ export const socialShareService = {
     window.open(xUrl, '_blank', 'width=600,height=500');
   },
 
+  // Share to WhatsApp
+  shareToWhatsApp(url: string, text: string) {
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text + ' ' + url)}`;
+    window.open(whatsappUrl, '_blank', 'width=600,height=500');
+  },
+
+  // Share to Messenger (Note: This often requires an App ID for full web functionality, falling back to generic FB share or just UI)
+  shareToMessenger(url: string) {
+    // Using generic FB share which is often used for Messenger sharing on web without App ID setup
+    // Alternatively: fb-messenger://share/?link=${encodeURIComponent(url)} for mobile
+    const messengerUrl = `https://www.facebook.com/dialog/send?link=${encodeURIComponent(url)}&app_id=291474419146&redirect_uri=${encodeURIComponent(url)}`;
+    window.open(messengerUrl, '_blank', 'width=600,height=500');
+  },
+
+  // Share to Telegram
+  shareToTelegram(url: string, text: string) {
+    const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+    window.open(telegramUrl, '_blank', 'width=600,height=500');
+  },
+
+  // Share via Email
+  shareViaEmail(url: string, title: string, text: string) {
+    const mailtoUrl = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(text + '\n' + url)}`;
+    window.location.href = mailtoUrl;
+  },
+
   // Copy to clipboard
   async copyToClipboard(text: string): Promise<boolean> {
     try {

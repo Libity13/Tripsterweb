@@ -162,48 +162,75 @@ const SharedTrip = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* Header - Mobile Responsive */}
       <header className="bg-white border-b sticky top-0 z-40">
-        <div className="container py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate(`/${language}`)}>
+        <div className="container px-3 sm:px-6 py-3 sm:py-4">
+          {/* Mobile: Stack layout, Desktop: Row layout */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+            {/* Top Row: Back button + Title */}
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => navigate(`/${language}`)}
+                className="shrink-0 mt-0.5"
+              >
                 <ArrowLeft className="h-5 w-5" />
               </Button>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold">{trip.title}</h1>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-lg sm:text-xl font-bold truncate max-w-[200px] sm:max-w-none">
+                    {trip.title}
+                  </h1>
                   <TripStatusBadge 
                     status={(trip.status as TripStatusType) || 'planning'} 
                     size="sm"
                   />
                 </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Calendar className="w-4 h-4" />
-                  <span>
-                    {new Date(trip.start_date).toLocaleDateString(dateLocale)}
-                    {trip.end_date && ` - ${new Date(trip.end_date).toLocaleDateString(dateLocale)}`}
+                {/* Trip Info - Wrap on mobile */}
+                <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground flex-wrap mt-1">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="whitespace-nowrap">
+                      {new Date(trip.start_date).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
+                      {trip.end_date && ` - ${new Date(trip.end_date).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}`}
+                    </span>
                   </span>
-                  <span className="mx-2">•</span>
-                  <MapPin className="w-4 h-4" />
-                  <span>{trip.destinations?.length || 0} {language === 'th' ? 'สถานที่' : 'places'}</span>
+                  <span className="hidden sm:inline mx-1">•</span>
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span>{trip.destinations?.length || 0} {language === 'th' ? 'สถานที่' : 'places'}</span>
+                  </span>
                 </div>
               </div>
             </div>
             
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2">
+            {/* Action Buttons - Full width on mobile */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               {user ? (
-                <Button onClick={handleCopyToAccount} disabled={isCopying}>
+                <Button 
+                  onClick={handleCopyToAccount} 
+                  disabled={isCopying}
+                  className="flex-1 sm:flex-none"
+                  size="sm"
+                >
                   <Copy className="w-4 h-4 mr-2" />
-                  {isCopying 
-                    ? (language === 'th' ? 'กำลังคัดลอก...' : 'Copying...') 
-                    : t('share.copyToAccount')}
+                  <span className="truncate">
+                    {isCopying 
+                      ? (language === 'th' ? 'กำลังคัดลอก...' : 'Copying...') 
+                      : (language === 'th' ? 'คัดลอกแผน' : 'Copy Trip')}
+                  </span>
                 </Button>
               ) : (
-                <Button onClick={() => setShowLoginModal(true)}>
+                <Button 
+                  onClick={() => setShowLoginModal(true)}
+                  className="flex-1 sm:flex-none"
+                  size="sm"
+                >
                   <LogIn className="w-4 h-4 mr-2" />
-                  {t('share.loginToEdit')}
+                  <span className="truncate">
+                    {language === 'th' ? 'เข้าสู่ระบบ' : 'Sign In'}
+                  </span>
                 </Button>
               )}
             </div>
@@ -212,16 +239,17 @@ const SharedTrip = () => {
       </header>
 
       {/* Tabs - Itinerary / Map */}
-      <div className="container py-4">
+      <div className="container px-3 sm:px-6 py-3 sm:py-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'itinerary' | 'map')}>
-          <TabsList className="grid w-full max-w-xs grid-cols-2">
-            <TabsTrigger value="itinerary">
-              <List className="w-4 h-4 mr-2" />
-              📋 Itinerary
+          {/* Sticky tabs on mobile for easy switching */}
+          <TabsList className="grid w-full sm:w-auto sm:max-w-xs grid-cols-2 sticky top-[73px] sm:static z-30 bg-muted">
+            <TabsTrigger value="itinerary" className="text-xs sm:text-sm">
+              <List className="w-4 h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">📋</span> {language === 'th' ? 'กำหนดการ' : 'Itinerary'}
             </TabsTrigger>
-            <TabsTrigger value="map">
-              <Map className="w-4 h-4 mr-2" />
-              🗺️ Map
+            <TabsTrigger value="map" className="text-xs sm:text-sm">
+              <Map className="w-4 h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">🗺️</span> {language === 'th' ? 'แผนที่' : 'Map'}
             </TabsTrigger>
           </TabsList>
 
@@ -234,56 +262,56 @@ const SharedTrip = () => {
 
                 return (
                   <Card key={day}>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <span className="bg-primary text-primary-foreground rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">
+                    <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6">
+                      <CardTitle className="flex items-center gap-2 text-base sm:text-lg flex-wrap">
+                        <span className="bg-primary text-primary-foreground rounded-full w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs sm:text-sm font-bold shrink-0">
                           {day}
                         </span>
-                        {language === 'th' ? `วันที่ ${day}` : `Day ${day}`}
-                        <span className="text-sm font-normal text-muted-foreground">
+                        <span>{language === 'th' ? `วันที่ ${day}` : `Day ${day}`}</span>
+                        <span className="text-xs sm:text-sm font-normal text-muted-foreground">
                           ({dayDate.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric' })})
                         </span>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="px-3 sm:px-6 pt-0">
                       {dayDestinations.length === 0 ? (
-                        <p className="text-muted-foreground text-sm py-4 text-center">
+                        <p className="text-muted-foreground text-xs sm:text-sm py-4 text-center">
                           {language === 'th' ? 'ยังไม่มีกำหนดการ' : 'No plans yet'}
                         </p>
                       ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-2 sm:space-y-3">
                           {dayDestinations.map((dest, idx) => (
                             <div 
                               key={dest.id} 
-                              className="flex gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                              className="flex gap-2 sm:gap-4 p-2.5 sm:p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors active:bg-gray-200"
                             >
                               {/* Index */}
-                              <div className="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-medium">
+                              <div className="shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs sm:text-sm font-medium">
                                 {idx + 1}
                               </div>
                               
-                              {/* Photo */}
+                              {/* Photo - Hidden on very small screens if no space */}
                               {dest.photos && dest.photos[0] && (
                                 <img 
                                   src={dest.photos[0]} 
                                   alt={dest.name}
-                                  className="w-16 h-16 rounded-lg object-cover shrink-0"
+                                  className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg object-cover shrink-0"
                                 />
                               )}
                               
                               {/* Info */}
                               <div className="flex-1 min-w-0">
-                                <h4 className="font-medium truncate">
+                                <h4 className="font-medium text-sm sm:text-base truncate">
                                   {language === 'en' && dest.name_en ? dest.name_en : dest.name}
                                 </h4>
-                                <p className="text-sm text-muted-foreground truncate">
+                                <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 sm:truncate">
                                   {dest.formatted_address || dest.description}
                                 </p>
-                                <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-2 sm:gap-4 mt-1 text-xs text-muted-foreground flex-wrap">
                                   {dest.visit_duration && (
                                     <span className="flex items-center gap-1">
                                       <Clock className="w-3 h-3" />
-                                      {dest.visit_duration} {language === 'th' ? 'นาที' : 'min'}
+                                      {dest.visit_duration} {language === 'th' ? 'น.' : 'min'}
                                     </span>
                                   )}
                                   {dest.rating && dest.rating > 0 && (
@@ -307,7 +335,8 @@ const SharedTrip = () => {
           <TabsContent value="map" className="mt-4">
             <Card>
               <CardContent className="p-0">
-                <div className="h-[600px] rounded-lg overflow-hidden">
+                {/* Responsive map height: smaller on mobile, larger on desktop */}
+                <div className="h-[calc(100vh-200px)] sm:h-[500px] lg:h-[600px] min-h-[300px] rounded-lg overflow-hidden">
                   <MapView
                     destinations={trip.destinations || []}
                     onDestinationClick={() => {}}

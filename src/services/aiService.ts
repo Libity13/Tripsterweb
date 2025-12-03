@@ -55,11 +55,22 @@ export const aiService = {
       mode?: 'narrative' | 'structured';
       temperature?: number;
       style?: 'compact' | 'detailed';
+      // Trip duration data - CRITICAL for preventing extra days
+      total_days?: number;
+      start_date?: string;
+      end_date?: string;
+      destinations_count?: number;
     }, 
     language: string = 'th'
   ) {
     try {
       console.log('🤖 AI attempt 1/3');
+      console.log('📊 Trip context for AI:', { 
+        total_days: context.total_days, 
+        start_date: context.start_date,
+        end_date: context.end_date,
+        destinations_count: context.destinations_count
+      });
       
       const response = await fetch(config.edgeFunctions.aiChat, {
         method: 'POST',
@@ -77,7 +88,12 @@ export const aiService = {
           model: context.model,
           mode: context.mode || 'structured',
           temperature: context.temperature ?? 0.7,
-          style: context.style || 'detailed'
+          style: context.style || 'detailed',
+          // Trip duration data - CRITICAL for AI to respect trip duration
+          total_days: context.total_days,
+          start_date: context.start_date,
+          end_date: context.end_date,
+          destinations_count: context.destinations_count
         })
       });
 
@@ -487,8 +503,8 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
       
       switch (action.action) {
         case "ADD_DESTINATIONS": {
-          const day = action.day ?? 1;
-          console.log(`📅 Adding destinations to day ${day}`);
+          const actionDay = action.day ?? 1;
+          console.log(`📅 Adding destinations (action.day: ${actionDay})`);
           
           // Check for duplicates before adding
           const existingDestinations = await tripService.getTrip(tripId);
@@ -504,6 +520,45 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
           const tripDays = Math.max(1, rawDiffDays + 1);
           console.log(`📅 Trip has ${tripDays} days (Start: ${trip?.start_date}, End: ${trip?.end_date})`);
           
+          // 🆕 Smart Distribution Logic (same as databaseSyncService.ts)
+          // Check if ANY destination has day specified
+          const hasDestDays = action.destinations.some((d: any) => d.day && typeof d.day === 'number');
+          
+          // Check if destinations are ACTUALLY distributed across multiple days
+          const uniqueDays = new Set(
+            action.destinations
+              .filter((d: any) => d.day && typeof d.day === 'number')
+              .map((d: any) => d.day)
+          );
+          const isActuallyDistributed = uniqueDays.size > 1;
+          
+          // Force distribute if:
+          // 1. No individual days specified, OR
+          // 2. All destinations have same day (not actually distributed), AND
+          // 3. There are more than 2 destinations, AND
+          // 4. Trip has multiple days
+          const shouldForceDistribute = (
+            !hasDestDays || // No days specified
+            (!isActuallyDistributed && hasDestDays) // All in same day
+          ) && action.destinations.length > 2 && tripDays > 1;
+          
+          console.log('📅 Distribution check:', {
+            actionDay,
+            hasDestDays,
+            isActuallyDistributed,
+            uniqueDaysCount: uniqueDays.size,
+            destinationsCount: action.destinations.length,
+            tripDays,
+            shouldForceDistribute,
+            reason: shouldForceDistribute 
+              ? (hasDestDays && !isActuallyDistributed 
+                ? '🔄 All destinations in same day - forcing distribution!'
+                : '🔄 No individual days - forcing distribution!')
+              : (isActuallyDistributed 
+                ? '✅ Already distributed across multiple days'
+                : '⚠️ Not forcing distribution')
+          });
+          
           // Track order_index per day to avoid collisions
           const orderIndexByDay: Record<number, number> = {};
           // Initialize with max order_index from existing destinations
@@ -515,9 +570,30 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
           
           for (let i = 0; i < action.destinations.length; i++) {
             const dest = action.destinations[i];
-            // [FIX] ไม่กระจายวันเอง ใช้ตามที่ระบุมา (หรือ default day)
-            // ถ้า AI อยากให้กระจาย ต้องส่งมาหลาย action แยกตามวัน
-            const targetDay = Math.min(Math.max(1, day), tripDays);
+            
+            // 🆕 Smart day calculation
+            let targetDay: number;
+            
+            if ((dest as any).day && typeof (dest as any).day === 'number' && !shouldForceDistribute) {
+              // AI specified day for this destination, and it's actually distributed
+              targetDay = Math.min(Math.max(1, (dest as any).day), tripDays);
+            } else if (shouldForceDistribute && tripDays > 1) {
+              // 🆕 Force distribute across days
+              const destinationsPerDay = Math.ceil(action.destinations.length / tripDays);
+              targetDay = Math.floor(i / destinationsPerDay) + 1;
+              targetDay = Math.min(targetDay, tripDays); // Clamp to trip days
+              console.log(`🔄 Auto-distributing "${dest.name}" to day ${targetDay} (${i+1}/${action.destinations.length})`);
+            } else {
+              // Fallback: use action.day or default 1
+              const requestedDay = (dest as any).day ?? actionDay;
+              targetDay = Math.min(Math.max(1, requestedDay), tripDays);
+            }
+            
+            // Log warning if AI tried to add to a day beyond trip duration
+            const originalRequestedDay = (dest as any).day ?? actionDay;
+            if (originalRequestedDay > tripDays) {
+              console.warn(`⚠️ AI tried to add "${dest.name}" to day ${originalRequestedDay}, but trip only has ${tripDays} days. Clamped to day ${targetDay}.`);
+            }
             
             // Skip if destination already exists
             if (existingNames.includes(dest.name.toLowerCase())) {
@@ -541,7 +617,17 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
             const nextOrderIndex = (orderIndexByDay[targetDay] ?? 0) + 1;
             orderIndexByDay[targetDay] = nextOrderIndex;
 
-            console.log(`📍 Adding ${dest.name} to day ${targetDay} (order: ${nextOrderIndex})`);
+            // Use only real data from AI - no fake estimates
+            const estimatedCost = (dest as any).estimated_cost > 0 
+              ? (dest as any).estimated_cost 
+              : null;
+
+            // Use only real duration from AI
+            const durationMinutes = dest.minHours 
+              ? Math.round(dest.minHours * 60) 
+              : null;
+
+            console.log(`📍 Adding ${dest.name} to day ${targetDay} (order: ${nextOrderIndex}${estimatedCost ? `, cost: ฿${estimatedCost}` : ''}${durationMinutes ? `, duration: ${durationMinutes}min` : ''})`);
             await tripService.addDestination(tripId, {
               trip_id: tripId,
               place_id: resolved.place_id,
@@ -555,8 +641,8 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
               visit_date: targetDay, // ใช้ targetDay ที่คำนวณแล้ว
               place_types: dest.place_type ? [dest.place_type] : ["tourist_attraction"],
               photos: [],
-              estimated_cost: null,
-              visit_duration: dest.minHours ? Math.round(dest.minHours * 60) : null,
+              estimated_cost: estimatedCost,
+              duration_minutes: durationMinutes,
               rating: resolved.rating,
               user_ratings_total: resolved.user_ratings_total,
               price_level: resolved.price_level,

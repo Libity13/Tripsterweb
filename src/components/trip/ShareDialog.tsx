@@ -2,33 +2,27 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { 
   Copy, 
   Check, 
-  Link as LinkIcon, 
   Facebook, 
+  Mail,
+  Send,
   MessageCircle,
-  Share2,
   Loader2,
-  Globe,
-  Lock
+  X
 } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
 import { shareService, socialShareService } from "@/services/shareService";
 import { useLanguage } from "@/hooks/useLanguage";
 import { toast } from "sonner";
 
 // X (Twitter) icon
 const XIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="white">
     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
   </svg>
 );
@@ -43,39 +37,23 @@ interface ShareDialogProps {
 export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogProps) {
   const { t, language } = useLanguage();
   const [isLoading, setIsLoading] = useState(false);
-  const [isShared, setIsShared] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (isOpen && tripId) {
-      loadShareStatus();
+      initializeShare();
     }
   }, [isOpen, tripId]);
 
-  const loadShareStatus = async () => {
-    // For now, we'll just set initial state
-    // In a real app, we'd check if the trip is already shared
-    setIsShared(false);
-    setShareUrl("");
-  };
-
-  const handleToggleShare = async (enabled: boolean) => {
+  const initializeShare = async () => {
     setIsLoading(true);
     try {
-      if (enabled) {
-        const shareInfo = await shareService.shareTrip(tripId);
-        setShareUrl(shareInfo.share_url);
-        setIsShared(true);
-        toast.success(t('share.enabled'));
-      } else {
-        await shareService.unshareTrip(tripId);
-        setIsShared(false);
-        setShareUrl("");
-        toast.success(t('share.disabled'));
-      }
+      // Check/Create share link immediately when opening
+      const shareInfo = await shareService.shareTrip(tripId);
+      setShareUrl(shareInfo.share_url);
     } catch (error) {
-      console.error("Share toggle error:", error);
+      console.error("Share initialization error:", error);
       toast.error(t('share.error'));
     } finally {
       setIsLoading(false);
@@ -93,182 +71,121 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
     }
   };
 
-  const handleNativeShare = async () => {
-    if (!shareUrl) return;
-    
-    const success = await socialShareService.nativeShare({
-      title: tripTitle,
-      text: language === 'th' 
-        ? `ดูแผนการเดินทาง: ${tripTitle}` 
-        : `Check out this trip: ${tripTitle}`,
-      url: shareUrl,
-    });
-    
-    if (!success && !socialShareService.isNativeShareAvailable()) {
-      handleCopyLink();
+  const socialApps = [
+    {
+      name: "WhatsApp",
+      icon: <MessageCircle className="h-6 w-6 text-white" />, // WhatsApp icon is phone-like but MessageCircle is close for chat apps in lucide
+      color: "bg-[#25D366]",
+      action: () => socialShareService.shareToWhatsApp(shareUrl, tripTitle)
+    },
+    {
+      name: "Facebook",
+      icon: <Facebook className="h-6 w-6 text-white" />,
+      color: "bg-[#1877F2]",
+      action: () => socialShareService.shareToFacebook(shareUrl)
+    },
+    {
+      name: "X",
+      icon: <XIcon />,
+      color: "bg-black",
+      action: () => socialShareService.shareToX(shareUrl, tripTitle)
+    },
+    {
+      name: "Messenger",
+      icon: <MessageCircle className="h-6 w-6 text-white" />,
+      color: "bg-gradient-to-b from-[#00B2FF] to-[#006AFF]", // Messenger gradient
+      action: () => socialShareService.shareToMessenger(shareUrl)
+    },
+    {
+      name: "Telegram",
+      icon: <Send className="h-6 w-6 text-white" />,
+      color: "bg-[#229ED9]",
+      action: () => socialShareService.shareToTelegram(shareUrl, tripTitle)
+    },
+    {
+      name: "Email",
+      icon: <Mail className="h-6 w-6 text-white" />,
+      color: "bg-[#7E7E7E]",
+      action: () => socialShareService.shareViaEmail(shareUrl, tripTitle, t('share.emailBody'))
     }
-  };
+  ];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Share2 className="h-5 w-5" />
-            {t('share.title')}
-          </DialogTitle>
-          <DialogDescription>
-            {t('share.description')}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6 py-4">
-          {/* Share Toggle */}
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-            <div className="flex items-center gap-3">
-              {isShared ? (
-                <Globe className="h-5 w-5 text-green-600" />
-              ) : (
-                <Lock className="h-5 w-5 text-gray-500" />
-              )}
-              <div>
-                <Label htmlFor="share-toggle" className="font-medium">
-                  {t('share.publicLink')}
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {isShared ? t('share.publicDesc') : t('share.privateDesc')}
-                </p>
-              </div>
-            </div>
-            <Switch
-              id="share-toggle"
-              checked={isShared}
-              onCheckedChange={handleToggleShare}
-              disabled={isLoading}
+      <DialogContent className="sm:max-w-4xl p-0 gap-0 overflow-hidden sm:rounded-3xl border-none shadow-2xl">
+        <div className="grid md:grid-cols-5 h-full">
+          {/* Left Column - Image */}
+          <div className="md:col-span-2 bg-gray-100 relative h-[200px] md:h-auto">
+            <img 
+              src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.0.3" 
+              alt="Trip" 
+              className="w-full h-full object-cover"
             />
+            <div className="absolute inset-0 bg-black/10" />
           </div>
 
-          {/* Share Content - Only show when shared */}
-          {isShared && shareUrl && (
-            <>
-              {/* QR Code */}
-              <div className="flex flex-col items-center gap-4 p-4 bg-white border rounded-lg">
-                <QRCodeSVG 
-                  value={shareUrl} 
-                  size={150}
-                  level="M"
-                  includeMargin
-                />
-                <p className="text-xs text-muted-foreground text-center">
-                  {t('share.scanQR')}
-                </p>
-              </div>
+          {/* Right Column - Content */}
+          <div className="md:col-span-3 p-6 md:p-8 flex flex-col gap-6 relative bg-white">
+            <div className="space-y-2 mt-4 md:mt-2">
+              <h2 className="text-2xl font-bold tracking-tight">
+                {language === 'th' ? 'แชร์และรับคำแนะนำสำหรับทริปของคุณ' : 'Share and get Feedback on your trip'}
+              </h2>
+              <p className="text-muted-foreground">
+                {language === 'th' ? 'รับคำแนะนำจากกลุ่มเพื่อนของคุณและปรับปรุงทริปนี้ให้ดียิ่งขึ้น' : 'Get suggestions from your group and refine this trip.'}
+              </p>
+            </div>
 
-              {/* Share URL */}
-              <div className="flex gap-2">
-                <Input 
-                  value={shareUrl} 
-                  readOnly 
-                  className="bg-gray-50"
-                />
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  onClick={handleCopyLink}
-                  className="shrink-0"
+            {/* Social Icons Grid */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 my-4">
+              {socialApps.map((app) => (
+                <button
+                  key={app.name}
+                  onClick={app.action}
+                  disabled={isLoading || !shareUrl}
+                  className="flex flex-col items-center gap-2 group transition-transform hover:scale-105 active:scale-95"
                 >
-                  {copied ? (
-                    <Check className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
+                    {app.icon}
+                  </div>
+                  <span className="text-xs font-medium text-gray-600">{app.name}</span>
+                </button>
+              ))}
+            </div>
 
-              {/* Social Share Buttons */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">{t('share.shareVia')}</Label>
-                <div className="flex gap-2 flex-wrap">
-                  {/* Native Share (Mobile) */}
-                  {socialShareService.isNativeShareAvailable() && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleNativeShare}
-                      className="flex-1"
-                    >
-                      <Share2 className="h-4 w-4 mr-2" />
-                      {t('share.share')}
-                    </Button>
-                  )}
-                  
-                  {/* Line */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => socialShareService.shareToLine(shareUrl, tripTitle)}
-                    className="flex-1 hover:bg-green-50 hover:border-green-500"
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
-                    Line
-                  </Button>
-                  
-                  {/* Facebook */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => socialShareService.shareToFacebook(shareUrl)}
-                    className="flex-1 hover:bg-blue-50 hover:border-blue-500"
-                  >
-                    <Facebook className="h-4 w-4 mr-2 text-blue-600" />
-                    Facebook
-                  </Button>
-                  
-                  {/* X (Twitter) */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => socialShareService.shareToX(
-                      shareUrl, 
-                      language === 'th' 
-                        ? `ดูแผนการเดินทางของฉัน: ${tripTitle}` 
-                        : `Check out my trip plan: ${tripTitle}`
+            {/* Page Link Section */}
+            <div className="space-y-2">
+              <Label className="text-base font-semibold">
+                {language === 'th' ? 'ลิงก์หน้าเว็บ' : 'Page Link'}
+              </Label>
+              <div className="relative group">
+                <div className="flex items-center bg-gray-50 rounded-xl border border-gray-200 p-1 pr-1 focus-within:ring-2 focus-within:ring-black/5 focus-within:border-gray-400 transition-all">
+                  <div className="flex-1 px-3 py-2 text-sm text-gray-600 truncate font-mono">
+                    {isLoading ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Generating link...
+                      </span>
+                    ) : (
+                      shareUrl || "https://tripster.com/..."
                     )}
-                    className="flex-1 hover:bg-gray-100 hover:border-gray-500"
+                  </div>
+                  <Button 
+                    size="icon"
+                    variant="ghost"
+                    onClick={handleCopyLink}
+                    disabled={!shareUrl}
+                    className="h-9 w-9 rounded-lg hover:bg-white shadow-sm border border-transparent hover:border-gray-200 transition-all"
                   >
-                    <XIcon />
-                    <span className="ml-2">X</span>
+                    {copied ? (
+                      <Check className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <Copy className="h-4 w-4 text-gray-600" />
+                    )}
                   </Button>
                 </div>
               </div>
-
-              {/* Copy Link Button (Big) */}
-              <Button 
-                onClick={handleCopyLink} 
-                className="w-full"
-                variant="default"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    {t('share.copied')}
-                  </>
-                ) : (
-                  <>
-                    <LinkIcon className="h-4 w-4 mr-2" />
-                    {t('share.copyLink')}
-                  </>
-                )}
-              </Button>
-            </>
-          )}
-
-          {/* Loading State */}
-          {isLoading && (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
-          )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -276,4 +193,3 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
 }
 
 export default ShareDialog;
-

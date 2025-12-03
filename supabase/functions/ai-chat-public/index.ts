@@ -1,7 +1,7 @@
 // Public AI Chat Edge Function - No authentication required
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
-const GEMINI_URL = (key)=>`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+const GEMINI_URL = (key)=>`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${key}`;
 
 Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') return new Response(null, {

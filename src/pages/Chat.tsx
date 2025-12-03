@@ -591,8 +591,10 @@ const Chat = () => {
         }
         
         // Calculate end date based on duration
+        // 🆕 Fix: Use (tripDuration - 1) for inclusive dates
+        // e.g., 2 days trip: Dec 2 (day 1) to Dec 3 (day 2) = start + (2-1) = start + 1 day
         const startDate = new Date();
-        const endDate = new Date(startDate.getTime() + tripDuration * 24 * 60 * 60 * 1000);
+        const endDate = new Date(startDate.getTime() + (tripDuration - 1) * 24 * 60 * 60 * 1000);
         
         // Create a new trip for the user - let AI determine the duration
         const newTrip = await tripService.createTrip({

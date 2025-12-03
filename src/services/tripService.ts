@@ -14,8 +14,8 @@ export const tripService = {
     const insertData: any = {
       title: tripData.title || 'แผนการเดินทางใหม่',
       title_en: tripData.title_en || 'New Travel Plan',
-      description: tripData.description || 'แผนการเดินทางที่สร้างจาก AI Chat',
-      description_en: tripData.description_en || 'Travel plan created from AI Chat',
+      description: tripData.description || 'ทริปที่สร้างจาก Tripster AI',
+      description_en: tripData.description_en || 'Travel plan created from Tripster AI',
       start_date: tripData.start_date || new Date().toISOString().split('T')[0],
       end_date: tripData.end_date || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       total_duration: tripData.total_duration || 0,
@@ -361,30 +361,29 @@ export const tripService = {
     const isAuthenticated = !!currentUser;
     const guestId = authService.getGuestId();
     
-    let query = supabase
-      .from('trips')
-      .select(`
-        *,
-        destinations (*)
-      `)
-      .order('created_at', { ascending: false });
-    
     // ✅ SECURITY FIX: Filter by user_id or guest_id
+    let filterColumn: string;
+    let filterValue: string;
+    
     if (isAuthenticated) {
-      // Logged in user: show only their trips
-      query = query.eq('user_id', currentUser.id);
+      filterColumn = 'user_id';
+      filterValue = currentUser.id;
       console.log('🔐 getUserTrips: Filtering by user_id:', currentUser.id);
     } else if (guestId) {
-      // Guest user: show only their guest trips
-      query = query.eq('guest_id', guestId);
+      filterColumn = 'guest_id';
+      filterValue = guestId;
       console.log('🔐 getUserTrips: Filtering by guest_id:', guestId);
     } else {
-      // No user and no guest ID: return empty array
       console.log('🔐 getUserTrips: No user or guest ID, returning empty array');
       return [];
     }
 
-    const { data, error } = await query;
+    // @ts-expect-error - Supabase query chain causes deep type instantiation
+    const { data, error } = await supabase
+      .from('trips')
+      .select(`*, destinations (*)`)
+      .eq(filterColumn, filterValue)
+      .order('created_at', { ascending: false });
 
     if (error) {
       throw new Error(`Failed to load trips: ${error.message}`);
@@ -460,21 +459,23 @@ export const tripService = {
     }
     
     // Finally, delete the trip itself
-    let deleteQuery = supabase
-      .from('trips')
-      .delete()
-      .eq('id', tripId);
-    
     // ✅ SECURITY: Only allow deleting own trips
-    if (currentUser) {
-      deleteQuery = deleteQuery.eq('user_id', currentUser.id);
-    } else if (guestId) {
-      deleteQuery = deleteQuery.eq('guest_id', guestId);
-    } else {
+    let error: Error | null = null;
+    
+    if (!currentUser && !guestId) {
       throw new Error('Unauthorized: Cannot delete trip without authentication');
     }
     
-    const { error } = await deleteQuery;
+    const ownerColumn = currentUser ? 'user_id' : 'guest_id';
+    const ownerValue = currentUser ? currentUser.id : guestId!;
+    
+    // @ts-expect-error - Supabase query chain causes deep type instantiation
+    const { error: deleteError } = await supabase
+      .from('trips')
+      .delete()
+      .eq('id', tripId)
+      .eq(ownerColumn, ownerValue);
+    error = deleteError;
     
     if (error) {
       console.error('❌ tripService.deleteTrip: Error:', error);

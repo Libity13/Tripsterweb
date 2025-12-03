@@ -575,15 +575,30 @@ const ChatPanel = ({
         aiConfig.currentProvider === 'claude' ? 'claude' : 
         aiConfig.currentProvider === 'gemini' ? 'gemini' : 'openai';
       
-      // Step 1: Generate Narrative (optional - can skip if user wants structured response)
-      // For now, we'll use structured mode by default
-      // TODO: Add toggle for narrative mode vs structured mode
+      // Get trip data for context - IMPORTANT for AI to know trip duration
+      let tripData: { start_date?: string; end_date?: string; total_days?: number; destinations_count?: number } = {};
+      if (tripId) {
+        const trip = await tripService.getTrip(tripId);
+        if (trip) {
+          const diffTime = new Date(trip.end_date || '').getTime() - new Date(trip.start_date || '').getTime();
+          const totalDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
+          tripData = {
+            start_date: trip.start_date || undefined,
+            end_date: trip.end_date || undefined,
+            total_days: totalDays,
+            destinations_count: trip.destinations?.length || 0
+          };
+          console.log('📊 Trip data for AI context:', tripData);
+        }
+      }
       
       const context = { 
         tripId, 
         history,
         language: detectedLanguage, // Pass detected language to AI
         ...(extractedDay && { day: extractedDay }), // Add day context if found
+        // Trip data - CRITICAL for AI to respect trip duration
+        ...tripData,
         // Add AI config parameters
         provider,
         model: aiConfig.currentModel,

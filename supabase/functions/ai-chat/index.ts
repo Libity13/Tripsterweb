@@ -156,6 +156,15 @@ interface AICallOptions {
 
   trip_id?: string;
 
+  // Trip duration data - CRITICAL for preventing extra days
+  total_days?: number;
+
+  start_date?: string;
+
+  end_date?: string;
+
+  destinations_count?: number;
+
 }
 
 
@@ -267,7 +276,9 @@ You MUST respond with ONLY valid JSON in this exact format:
 
       "time": "เช้า|บ่าย|เย็น|ทั้งวัน", // Time context
 
-      "minHours": 2 // Optional: estimated hours to spend
+      "minHours": 2, // Optional: estimated hours to spend
+
+      "estimated_cost": 200 // Optional: estimated cost in THB per person
 
     },
 
@@ -341,11 +352,13 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
               "hintAddress": "string (optional)",
 
-              "minHours": "number (optional)",
+              "minHours": "number (optional, hours to spend)",
+
+              "estimated_cost": "number (optional, cost in THB per person)",
 
               "place_type": "tourist_attraction | lodging | restaurant (optional)",
 
-              "day": "number (optional, 1-based day index in the trip)"
+              "day": "number (REQUIRED! 1-based day index. MUST be between 1 and total_days. NEVER exceed trip duration!)"
 
             }
 
@@ -457,6 +470,24 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
     - Check the trip duration in the context before planning.
     - Example: User says "เที่ยวเชียงราย 2 วัน" → Plan for Day 1 and Day 2 ONLY. No Day 3.
     - Example: User says "3 day trip to Phuket" → Plan for Day 1, Day 2, and Day 3 ONLY. No Day 4.
+    
+    🚨 ADD_DESTINATIONS DAY VALIDATION:
+    - When adding destinations, ALWAYS specify "day" for each destination
+    - The "day" value MUST be between 1 and the trip's total_days
+    - NEVER use a day number higher than the trip duration
+    - If trip is 2 days → only use "day": 1 or "day": 2
+    - If trip is 3 days → only use "day": 1, "day": 2, or "day": 3
+    
+    🚨 DISTRIBUTION RULE (STRICT - YOU WILL FAIL IF IGNORED):
+    - DO NOT put all destinations in Day 1. This is WRONG!
+    - You MUST distribute destinations EVENLY across ALL available days.
+    - Each day should have approximately equal number of places.
+    - Example for 2 days with 6 places: Day 1 gets 3 places, Day 2 gets 3 places.
+    - Example for 3 days with 9 places: Day 1 gets 3, Day 2 gets 3, Day 3 gets 3.
+    - Example for 2 days with 5 places: Day 1 gets 3, Day 2 gets 2.
+    - ❌ WRONG: All 6 places in Day 1, nothing in Day 2.
+    - ✅ CORRECT: 3 places in Day 1, 3 places in Day 2.
+    - If you put everything in Day 1, you FAIL the task and the user will be disappointed.
     
     CRITICAL: Complete Travel Planning:
 
@@ -616,6 +647,23 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
     - If user says "ช่วยหา", "หาที่พัก", "หาร้านอาหาร" → use RECOMMEND_PLACES with location_context from history
 
+    🚨 CHANGE DESTINATION/LOCATION RULE (เปลี่ยนจังหวัด/ปลายทาง):
+    - If user says "เปลี่ยนไป [new location]" or "เปลี่ยนจังหวัด" or "ไป [new place] แทน":
+      1. First: REMOVE_DESTINATIONS to clear ALL old destinations
+      2. Then: ADD_DESTINATIONS with new places in the NEW location
+      3. CRITICAL: KEEP THE SAME NUMBER OF DAYS! Do NOT change trip duration!
+      4. Create destinations for ALL days (same as original trip)
+    - Example: Original trip is 2 days in Chiang Mai, user says "เปลี่ยนไปภูเก็ต"
+      → Remove all Chiang Mai places, Add Phuket places for Day 1 AND Day 2 (NOT Day 3!)
+
+    🚫 FORBIDDEN - UPDATE_TRIP_INFO RESTRICTIONS:
+    - Do NOT use "UPDATE_TRIP_INFO" to change the number of days unless user explicitly says:
+      • "เพิ่มวัน" (add days), "เพิ่มเป็น X วัน" 
+      • "ลดวัน" (reduce days), "เปลี่ยนเป็น X วัน"
+      • "extend trip", "shorten trip", "change to X days"
+    - Changing location DOES NOT mean changing duration!
+    - "เปลี่ยนจังหวัด" ≠ "เปลี่ยนจำนวนวัน"
+
     - NEVER ask for companions/budget in modification requests
     
     
@@ -695,6 +743,24 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
     - 🏛️ ที่เที่ยว (tourist_attraction): 2-3 แห่ง (ไม่เกิน 4 แห่ง)
     - 🍽️ ร้านอาหาร (restaurant): 2-3 ร้าน (อาหารเช้า/กลางวัน/เย็น)
     - 🏨 ที่พัก (lodging): 1 แห่ง (ยกเว้นวันสุดท้าย)
+
+    🚨 CRITICAL: CREATE DESTINATIONS FOR ALL DAYS (ต้องสร้างสถานที่ทุกวัน):
+    - If trip has 2 days → MUST create destinations for BOTH Day 1 AND Day 2
+    - If trip has 3 days → MUST create destinations for Day 1, Day 2, AND Day 3
+    - NEVER leave any day empty!
+    - Each day should have at least 3-5 places
+    - Example for 2-day trip:
+      * Day 1: beach, lunch restaurant, attraction, dinner restaurant, hotel
+      * Day 2: breakfast, attraction, shopping, lunch, airport/departure
+    - ถ้าทริป 2 วัน ต้องสร้างสถานที่ทั้ง 2 วัน ห้ามเว้นวันไหนว่างเปล่า!
+
+    💰 Cost Estimation Guidelines (ประมาณค่าใช้จ่าย):
+    - ให้ estimated_cost เป็นค่าใช้จ่ายโดยประมาณต่อคน (THB)
+    - 🏛️ ที่เที่ยว: ค่าเข้าชม 0-500 บาท (วัดฟรี, พิพิธภัณฑ์ 100-300, สวนสนุก 500+)
+    - 🍽️ ร้านอาหาร: 100-500 บาท/มื้อ (Street food 50-100, ร้านทั่วไป 150-300, Fine dining 500+)
+    - 🏨 ที่พัก: 500-3000 บาท/คืน (Hostel 300-500, Hotel 800-1500, Resort 2000+)
+    - ☕ คาเฟ่: 100-200 บาท
+    - 🛍️ ช้อปปิ้ง: 200-1000 บาท (ขึ้นกับสถานที่)
 
     
     🚫 Forbidden Patterns (ห้ามทำโดยเด็ดขาด):
@@ -782,6 +848,139 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 }
 
 
+// --- Helpers to extract and repair JSON responses ---
+function extractJsonCandidate(rawContent: string): string {
+  if (!rawContent) return '';
+  let content = rawContent.trim();
+
+  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    content = codeBlockMatch[1].trim();
+  }
+
+  return content;
+}
+
+function findJsonObjectByBraces(text: string): string | null {
+  if (!text) return null;
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let braceCount = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === '{') {
+        braceCount++;
+      } else if (char === '}') {
+        braceCount--;
+        if (braceCount === 0) {
+          return text.substring(start, i + 1);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function repairTruncatedJsonString(text: string): string | null {
+  if (!text) return null;
+  let repaired = text;
+
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < repaired.length; i++) {
+    const char = repaired[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === '{') openBraces++;
+      else if (char === '}') openBraces--;
+      else if (char === '[') openBrackets++;
+      else if (char === ']') openBrackets--;
+    }
+  }
+
+  if (inString) repaired += '"';
+  while (openBrackets > 0) {
+    repaired += ']';
+    openBrackets--;
+  }
+  while (openBraces > 0) {
+    repaired += '}';
+    openBraces--;
+  }
+
+  try {
+    JSON.parse(repaired);
+    return repaired;
+  } catch {
+    return null;
+  }
+}
+
+function parseJsonWithRecovery(rawContent: string): any {
+  const tryParse = (text: string | null) => {
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  };
+
+  const candidate = extractJsonCandidate(rawContent);
+  const firstAttempt = tryParse(candidate);
+  if (firstAttempt) return firstAttempt;
+
+  const braceMatch = findJsonObjectByBraces(candidate);
+  const secondAttempt = tryParse(braceMatch);
+  if (secondAttempt) return secondAttempt;
+
+  const repaired = repairTruncatedJsonString(braceMatch || candidate);
+  const thirdAttempt = tryParse(repaired);
+  if (thirdAttempt) return thirdAttempt;
+
+  throw new Error('Invalid JSON response from AI');
+}
+
 
 // --- ฟังก์ชันเรียก OpenAI API ---
 
@@ -865,7 +1064,19 @@ async function callOpenAI(
 
 - Current User Message: "${userMessage}"
 
+- TRIP DURATION: ${options.total_days || 'Unknown'} days (start: ${options.start_date || 'N/A'}, end: ${options.end_date || 'N/A'})
 
+- Existing Destinations: ${options.destinations_count || 0} places
+
+⚠️ CRITICAL RULES:
+1. DO NOT add extra days! This trip has EXACTLY ${options.total_days || 'N/A'} days.
+2. MUST CREATE destinations for ALL ${options.total_days || 'N/A'} days! Do NOT leave any day empty!
+3. Each day should have 3-5 places (attractions, restaurants, activities).
+4. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
+5. 🚨 DISTRIBUTE EVENLY: DO NOT put all places in Day 1! Split them across all days equally.
+   - Example: 6 places for 2 days → Day 1: 3 places, Day 2: 3 places
+   - ❌ WRONG: 6 places all in Day 1
+   - ✅ CORRECT: 3 in Day 1, 3 in Day 2
 
 DECISION LOGIC:
 
@@ -1002,17 +1213,19 @@ EXTRACT DESTINATION NAME FROM USER MESSAGE:
 
         
 
-        // Validate JSON
-
-        let parsed;
-
         try {
 
-            parsed = JSON.parse(content);
+            return parseJsonWithRecovery(content);
 
         } catch (parseError) {
 
-            console.error('JSON parse error:', parseError);
+            console.error('OpenAI JSON parse error:', {
+
+                error: parseError,
+
+                snippet: content.slice(0, 500)
+
+            });
 
             if (retryCount < 1) {
 
@@ -1022,13 +1235,9 @@ EXTRACT DESTINATION NAME FROM USER MESSAGE:
 
             }
 
-            throw new Error('Invalid JSON response from AI');
+            throw parseError;
 
         }
-
-
-
-        return parsed;
 
     } catch (error) {
 
@@ -1126,7 +1335,7 @@ async function callClaude(
 
 
 
-  const model = options.model || 'claude-3-5-sonnet-20240620'; // Stable, recommended Claude 3.5 Sonnet
+  const model = options.model || 'claude-sonnet-4-5-20250929'; // Claude Sonnet 4.5 (recommended)
 
   const temperature = options.temperature ?? 0.7;
 
@@ -1178,11 +1387,19 @@ async function callClaude(
 
 - Conversation History Length: ${conversationHistory ? conversationHistory.length : 0} messages
 
-- Trip ID: ${trip_id || 'None'}
+- Trip ID: ${options.trip_id || 'None'}
 
 - Current User Message: "${userMessage}"
 
+- TRIP DURATION: ${options.total_days || 'Unknown'} days (start: ${options.start_date || 'N/A'}, end: ${options.end_date || 'N/A'})
 
+- Existing Destinations: ${options.destinations_count || 0} places
+
+⚠️ CRITICAL RULES:
+1. DO NOT add extra days! This trip has EXACTLY ${options.total_days || 'N/A'} days.
+2. MUST CREATE destinations for ALL ${options.total_days || 'N/A'} days! Do NOT leave any day empty!
+3. Each day should have 3-5 places (attractions, restaurants, activities).
+4. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
 
 DECISION LOGIC:
 
@@ -1847,13 +2064,33 @@ async function callGemini(
 
 
 
-    // Add current user message
+    // Add current user message with trip context (same as Claude)
+    const userContent = mode === 'structured' 
+      ? `${userMessage}\n\nCONTEXT CHECK:
+- Conversation History Length: ${conversationHistory ? conversationHistory.length : 0} messages
+- Trip ID: ${options.trip_id || 'None'}
+- Current User Message: "${userMessage}"
+- TRIP DURATION: ${options.total_days || 'Unknown'} days (start: ${options.start_date || 'N/A'}, end: ${options.end_date || 'N/A'})
+- Existing Destinations: ${options.destinations_count || 0} places
+
+⚠️ CRITICAL RULES:
+1. DO NOT add extra days! This trip has EXACTLY ${options.total_days || 'N/A'} days.
+2. MUST CREATE destinations for ALL ${options.total_days || 'N/A'} days! Do NOT leave any day empty!
+3. Each day should have 3-5 places (attractions, restaurants, activities).
+4. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
+5. 🚨 DISTRIBUTE EVENLY: DO NOT put all places in Day 1! Split them across all days equally.
+   - Example: 6 places for 2 days → Day 1: 3 places, Day 2: 3 places
+   - ❌ WRONG: 6 places all in Day 1
+   - ✅ CORRECT: 3 in Day 1, 3 in Day 2
+
+⚠️ RESPOND ONLY WITH VALID JSON! No markdown, no extra text.`
+      : userMessage;
 
     contents.push({
 
       role: 'user',
 
-      parts: [{ text: userMessage }]
+      parts: [{ text: userContent }]
 
     });
 
@@ -1917,9 +2154,19 @@ async function callGemini(
 
     const result = await response.json();
 
-    const content = result?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
+    let content = result?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
     
+    // 🆕 Strip markdown code blocks if present (Gemini often wraps JSON in ```json...```)
+    content = content.trim();
+    if (content.startsWith('```json')) {
+      content = content.slice(7); // Remove ```json
+    } else if (content.startsWith('```')) {
+      content = content.slice(3); // Remove ```
+    }
+    if (content.endsWith('```')) {
+      content = content.slice(0, -3); // Remove trailing ```
+    }
+    content = content.trim();
 
     // Validate JSON
 
@@ -1931,7 +2178,7 @@ async function callGemini(
 
     } catch (parseError) {
 
-      console.error('JSON parse error:', parseError);
+      console.error('JSON parse error:', parseError, '\nContent:', content.substring(0, 200));
 
       // Return as text if not JSON
 
@@ -2177,26 +2424,26 @@ Deno.serve(async (req: Request) => {
 
 
 
-    // Insert user message (only if user is authenticated)
-
-    if (user) {
-
-      await supabase.from('chat_messages').insert([{
-
+    // Insert user message (for both authenticated and guest users)
+    // 🆕 Fix: Always save messages if we have a trip_id or session_id
+    if (trip_id || session_id) {
+      const insertData: any = {
         trip_id: trip_id || null,
-
-        user_id: user!.id, // user is guaranteed to be non-null here
-
         role: 'user',
-
         content: message,
-
         session_id,
-
         language: currentLanguage
-
-      }]);
-
+      };
+      
+      // Only set user_id if user is authenticated
+      if (user) {
+        insertData.user_id = user.id;
+      }
+      
+      const { error: insertError } = await supabase.from('chat_messages').insert([insertData]);
+      if (insertError) {
+        console.warn('⚠️ Failed to insert user message:', insertError.message);
+      }
     }
 
 
@@ -2253,8 +2500,7 @@ Deno.serve(async (req: Request) => {
 
 
 
-      // Prepare AI call options
-
+      // Prepare AI call options with trip duration data
       const aiOptions: AICallOptions = {
 
         model: model,
@@ -2265,7 +2511,16 @@ Deno.serve(async (req: Request) => {
 
         style: style as AIStyle,
 
-        trip_id: trip_id
+        trip_id: trip_id,
+
+        // Trip duration data from frontend - CRITICAL for preventing extra days
+        total_days: payload.total_days,
+
+        start_date: payload.start_date,
+
+        end_date: payload.end_date,
+
+        destinations_count: payload.destinations_count
 
       };
 
@@ -2480,32 +2735,35 @@ Deno.serve(async (req: Request) => {
 
 
 
-    // Save assistant message (only if user is authenticated)
-
+    // Save assistant message (for both authenticated and guest users)
+    // 🆕 Fix: Always save messages if we have a trip_id or session_id
     let inserted: { id: string } | null = null;
-
-    if (user) {
-
-      const { data: insertedData } = await supabase.from('chat_messages').insert([{
-
+    if (trip_id || session_id) {
+      const insertData: any = {
         trip_id: trip_id || null,
-
-        user_id: user!.id, // user is guaranteed to be non-null here
-
         role: 'assistant',
-
         content: assistantText,
-
         metadata: assistantStructured,
-
         session_id,
-
         language: currentLanguage
-
-      }]).select('id').single();
-
-      inserted = insertedData as { id: string } | null;
-
+      };
+      
+      // Only set user_id if user is authenticated
+      if (user) {
+        insertData.user_id = user.id;
+      }
+      
+      const { data: insertedData, error: insertError } = await supabase
+        .from('chat_messages')
+        .insert([insertData])
+        .select('id')
+        .single();
+      
+      if (insertError) {
+        console.warn('⚠️ Failed to insert assistant message:', insertError.message);
+      } else {
+        inserted = insertedData as { id: string } | null;
+      }
     }
 
 

@@ -1,10 +1,10 @@
 // Trip Planner - Display and manage trip itinerary
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Clock, DollarSign, Star, Navigation, Share2, Download, MessageCircle, User, X } from 'lucide-react';
+import { MapPin, Clock, DollarSign, Star, Navigation, Share2, Download, MessageCircle, User, X, LogIn } from 'lucide-react';
 import MapView from '@/components/trip/MapView';
 import ItineraryPanel from '@/components/trip/ItineraryPanel';
 import ChatPanel from '@/components/trip/ChatPanel';
@@ -26,8 +26,117 @@ import { useLanguage } from '@/hooks/useLanguage';
 
 // Types are now imported from tripService
 
+// Mobile Tabs Component
+const MobileTripTabs = ({
+  trip,
+  selectedDay,
+  viewMode,
+  onDestinationsUpdate,
+  onAddDestination,
+  onViewModeChange,
+  onSelectedDayChange
+}: {
+  trip: Trip;
+  selectedDay: number;
+  viewMode: 'grid' | 'timeline';
+  onDestinationsUpdate: (destinations: Destination[]) => void;
+  onAddDestination: (day: number) => void;
+  onViewModeChange: (mode: 'grid' | 'timeline') => void;
+  onSelectedDayChange: (day: number) => void;
+}) => {
+  const [activeTab, setActiveTab] = useState<'chat' | 'itinerary' | 'map'>('itinerary');
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Tab Navigation - Fixed at bottom for mobile */}
+      <div className="order-2 sm:order-1 bg-white border-t sm:border-t-0 sm:border-b sticky bottom-0 sm:static z-30">
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 py-3 px-2 text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-1.5
+              ${activeTab === 'chat' 
+                ? 'text-primary border-t-2 sm:border-t-0 sm:border-b-2 border-primary bg-primary/5' 
+                : 'text-muted-foreground hover:text-foreground'
+              }`}
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>แชท</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('itinerary')}
+            className={`flex-1 py-3 px-2 text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-1.5
+              ${activeTab === 'itinerary' 
+                ? 'text-primary border-t-2 sm:border-t-0 sm:border-b-2 border-primary bg-primary/5' 
+                : 'text-muted-foreground hover:text-foreground'
+              }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>กำหนดการ</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('map')}
+            className={`flex-1 py-3 px-2 text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-1.5
+              ${activeTab === 'map' 
+                ? 'text-primary border-t-2 sm:border-t-0 sm:border-b-2 border-primary bg-primary/5' 
+                : 'text-muted-foreground hover:text-foreground'
+              }`}
+          >
+            <MapPin className="w-4 h-4" />
+            <span>แผนที่</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="order-1 sm:order-2 flex-1 min-h-0 overflow-hidden">
+        {activeTab === 'chat' && (
+          <Card className="h-full flex flex-col overflow-hidden rounded-none sm:rounded-lg">
+            <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
+              <ChatPanel 
+                tripId={trip?.id}
+                onDestinationsUpdate={onDestinationsUpdate}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === 'itinerary' && (
+          <Card className="h-full flex flex-col overflow-hidden rounded-none sm:rounded-lg">
+            <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
+              <ItineraryPanel 
+                destinations={trip.destinations}
+                onUpdate={onDestinationsUpdate}
+                onAddDestination={onAddDestination}
+                startDate={trip.start_date}
+                endDate={trip.end_date}
+                viewMode={viewMode}
+                onViewModeChange={onViewModeChange}
+                onSelectedDayChange={onSelectedDayChange}
+                tripId={trip.id}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === 'map' && (
+          <Card className="h-full flex flex-col overflow-hidden rounded-none sm:rounded-lg">
+            <CardContent className="flex-1 min-h-0 p-0 relative">
+              <div className="absolute inset-0">
+                <ErrorBoundary>
+                  <MapView destinations={trip.destinations} selectedDay={selectedDay} />
+                </ErrorBoundary>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const TripPlanner = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { language, t } = useLanguage();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
@@ -280,13 +389,38 @@ const TripPlanner = () => {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
-      {/* Header */}
+      {/* Header - Mobile Responsive */}
       <div className="bg-white border-b shrink-0">
-        <div className="px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-gray-900">{trip.title}</h1>
+        <div className="px-3 sm:px-4 py-2 sm:py-4">
+          {/* Mobile: Stack layout */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            {/* Title Row */}
+            <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+              {/* Logo - Click to go home */}
+              <button
+                onClick={() => navigate(`/${language}`)}
+                className="shrink-0 flex items-center gap-1.5 sm:gap-2 hover:opacity-80 transition-opacity group"
+                title={language === 'th' ? 'กลับหน้าแรก' : 'Go to Home'}
+              >
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center overflow-hidden border-2 border-white shadow-md group-hover:shadow-lg transition-shadow">
+                  <img 
+                    src="/TripsterIcon.png" 
+                    alt="Tripster" 
+                    className="w-full h-full object-cover" 
+                  />
+                </div>
+                <span className="hidden sm:inline text-sm font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent">
+                  Tripster
+                </span>
+              </button>
+              
+              {/* Divider */}
+              <div className="hidden sm:block w-px h-6 bg-gray-200" />
+              
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate max-w-[150px] sm:max-w-none">
+                  {trip.title}
+                </h1>
                 <TripStatusButton
                   currentStatus={(trip.status as TripStatusType) || 'planning'}
                   onStatusChange={async (newStatus) => {
@@ -304,8 +438,9 @@ const TripPlanner = () => {
                   }}
                 />
               </div>
+              {/* User avatar - Hidden on mobile, visible on larger screens */}
               {user && (
-                <div className="flex items-center gap-2 bg-gray-50 rounded-full px-3 py-2">
+                <div className="hidden md:flex items-center gap-2 bg-gray-50 rounded-full px-3 py-2 shrink-0">
                   {user?.user_metadata?.avatar_url || user?.user_metadata?.picture ? (
                     <img
                       src={user.user_metadata.avatar_url || user.user_metadata.picture}
@@ -323,19 +458,23 @@ const TripPlanner = () => {
                 </div>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleShareTrip} size="sm">
-                <Share2 className="h-4 w-4 mr-2" />
-                Share
+            
+            {/* Action Buttons - Scrollable on mobile */}
+            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+              <Button variant="outline" onClick={handleShareTrip} size="sm" className="shrink-0">
+                <Share2 className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Share</span>
               </Button>
-              <ExportPDFButton trip={trip} />
+              <ExportPDFButton trip={trip} size="sm" showLabel={false} />
               {user ? (
-                <Button onClick={handleSaveTrip} size="sm">
-                  บันทึก
+                <Button onClick={handleSaveTrip} size="sm" className="shrink-0">
+                  <span className="hidden sm:inline">บันทึก</span>
+                  <span className="sm:hidden">💾</span>
                 </Button>
               ) : (
-                <Button onClick={() => setShowLoginModal(true)} size="sm">
-                  เข้าสู่ระบบเพื่อบันทึก
+                <Button onClick={() => setShowLoginModal(true)} size="sm" className="shrink-0">
+                  <LogIn className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">เข้าสู่ระบบ</span>
                 </Button>
               )}
             </div>
@@ -343,10 +482,11 @@ const TripPlanner = () => {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 min-h-0 p-4">
+      {/* Main Content - Mobile: Tabs, Desktop: Grid */}
+      <div className="flex-1 min-h-0 p-2 sm:p-4">
         <div className="h-full">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-full">
+          {/* Desktop: 3-column grid */}
+          <div className="hidden lg:grid lg:grid-cols-3 gap-4 h-full">
             {/* ซ้าย - Chat Panel */}
             <div className="lg:col-span-1 h-full min-h-0">
               <Card className="h-full flex flex-col overflow-hidden">
@@ -390,6 +530,19 @@ const TripPlanner = () => {
                 </CardContent>
               </Card>
             </div>
+          </div>
+
+          {/* Mobile/Tablet: Tabbed interface */}
+          <div className="lg:hidden h-full flex flex-col">
+            <MobileTripTabs
+              trip={trip}
+              selectedDay={selectedDay}
+              viewMode={viewMode}
+              onDestinationsUpdate={handleDestinationsUpdate}
+              onAddDestination={handleAddDestination}
+              onViewModeChange={setViewMode}
+              onSelectedDayChange={setSelectedDay}
+            />
           </div>
         </div>
       </div>
