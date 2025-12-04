@@ -109,6 +109,20 @@ export const authService = {
     }
   },
 
+  // Sign in with Facebook
+  async signInWithFacebook(): Promise<void> {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`
+      }
+    });
+
+    if (error) {
+      throw new Error(`Facebook Sign In failed: ${error.message}`);
+    }
+  },
+
   // Sign out
   async signOut(): Promise<void> {
     const { error } = await supabase.auth.signOut();
