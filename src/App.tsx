@@ -13,6 +13,8 @@ import TripPlanner from "./pages/TripPlanner";
 import MyTrips from "./pages/MyTrips";
 import SharedTrip from "./pages/SharedTrip";
 import AuthCallback from "./pages/AuthCallback";
+import Privacy from "./pages/Privacy";
+import DataDeletion from "./pages/DataDeletion";
 import NotFound from "./pages/NotFound";
 
 // Disabled to save quota - uncomment only when debugging
@@ -53,6 +55,10 @@ const App = () => {
                 
                 {/* Shared Trip - Public access (no language prefix for shorter URLs) */}
                 <Route path="/share/:token" element={<SharedTrip />} />
+                
+                {/* Privacy & Data Deletion - Required for Facebook App */}
+                <Route path="/privacy" element={<Privacy />} />
+                <Route path="/data-deletion" element={<DataDeletion />} />
                 
                 {/* Language Routes */}
                 <Route path="/:lang" element={<Outlet />}>
