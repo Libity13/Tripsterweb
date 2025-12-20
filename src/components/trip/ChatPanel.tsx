@@ -575,8 +575,14 @@ const ChatPanel = ({
         aiConfig.currentProvider === 'claude' ? 'claude' : 
         aiConfig.currentProvider === 'gemini' ? 'gemini' : 'openai';
       
-      // Get trip data for context - IMPORTANT for AI to know trip duration
-      let tripData: { start_date?: string; end_date?: string; total_days?: number; destinations_count?: number } = {};
+      // Get trip data for context - IMPORTANT for AI to know trip duration and existing destinations
+      let tripData: { 
+        start_date?: string; 
+        end_date?: string; 
+        total_days?: number; 
+        destinations_count?: number;
+        existing_destinations?: Array<{ name: string; day: number; place_type?: string }>;
+      } = {};
       if (tripId) {
         const trip = await tripService.getTrip(tripId);
         if (trip) {
@@ -586,7 +592,13 @@ const ChatPanel = ({
             start_date: trip.start_date || undefined,
             end_date: trip.end_date || undefined,
             total_days: totalDays,
-            destinations_count: trip.destinations?.length || 0
+            destinations_count: trip.destinations?.length || 0,
+            // 🆕 ส่งรายชื่อ destinations ที่มีอยู่แล้วให้ AI รู้จัก
+            existing_destinations: trip.destinations?.map(d => ({
+              name: d.name,
+              day: d.visit_date || 1,
+              place_type: d.place_type
+            })) || []
           };
           console.log('📊 Trip data for AI context:', tripData);
         }
@@ -822,6 +834,11 @@ const ChatPanel = ({
               if (newLocation) {
                 console.log(`📍 Updating previousLocation to: ${newLocation}`);
                 setPreviousLocation(newLocation);
+                
+                // 🆕 Update trip name based on location
+                if (tripId) {
+                  await tripService.updateTripNameByLocation(tripId, newLocation);
+                }
               }
             }
           } else {

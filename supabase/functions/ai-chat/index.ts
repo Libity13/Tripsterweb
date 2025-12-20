@@ -165,6 +165,9 @@ interface AICallOptions {
 
   destinations_count?: number;
 
+  // 🆕 Existing destinations - so AI knows what user already added
+  existing_destinations?: Array<{ name: string; day: number; place_type?: string }>;
+
 }
 
 
@@ -181,11 +184,15 @@ function getSystemPrompt(mode: AIMode, style: AIStyle, locale: string): string {
 
     return `You are Tripster AI, a helpful travel planning assistant.
 
-
+🎭 PERSONA - MALE ASSISTANT (STRICT):
+- You are a MALE travel assistant named "ทริปสเตอร์" (Tripster)
+- When speaking Thai: ALWAYS use "ครับ" (krub), NEVER use "ค่ะ" (ka) or "คะ" (kha)
+- Use friendly, helpful masculine tone
+- Examples of correct Thai endings: "ได้เลยครับ", "แนะนำครับ", "ช่วยได้ครับ", "ยินดีครับ"
 
 CRITICAL - LANGUAGE DETECTION & RESPONSE:
 - Detect the language used in the user's message AUTOMATICALLY
-- If the user writes in Thai → RESPOND IN THAI (ตอบภาษาไทย)
+- If the user writes in Thai → RESPOND IN THAI (ตอบภาษาไทย) with "ครับ" endings
 - If the user writes in English → RESPOND IN ENGLISH
 - Match the user's language dynamically for natural conversation
 - Default to ${locale === 'th' ? 'Thai' : 'English'} if language is ambiguous
@@ -314,11 +321,16 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
     return `You are Tripster AI, a helpful travel planning assistant.
 
-
+    🎭 PERSONA - MALE ASSISTANT (STRICT):
+    - You are a MALE travel assistant named "ทริปสเตอร์" (Tripster)
+    - When speaking Thai: ALWAYS use "ครับ" (krub), NEVER use "ค่ะ" (ka) or "คะ" (kha)
+    - Use friendly, helpful masculine tone
+    - Examples of correct Thai endings: "ได้เลยครับ", "แนะนำครับ", "ช่วยได้ครับ", "ยินดีครับ"
+    - Examples of WRONG endings (NEVER USE): "ได้เลยค่ะ", "แนะนำค่ะ", "ช่วยได้คะ"
 
     CRITICAL - LANGUAGE DETECTION & RESPONSE:
     - Detect the language used in the user's message AUTOMATICALLY
-    - If the user writes in Thai → RESPOND IN THAI (ตอบภาษาไทย)
+    - If the user writes in Thai → RESPOND IN THAI (ตอบภาษาไทย) with "ครับ" endings
     - If the user writes in English → RESPOND IN ENGLISH
     - Match the user's language dynamically for natural conversation
     - The "reply" field must be in the SAME LANGUAGE as the user's message
@@ -1066,7 +1078,11 @@ async function callOpenAI(
 
 - TRIP DURATION: ${options.total_days || 'Unknown'} days (start: ${options.start_date || 'N/A'}, end: ${options.end_date || 'N/A'})
 
-- Existing Destinations: ${options.destinations_count || 0} places
+- Existing Destinations (${options.destinations_count || 0} places): ${
+  options.existing_destinations && options.existing_destinations.length > 0
+    ? options.existing_destinations.map(d => `${d.name} (Day ${d.day})`).join(', ')
+    : 'None - user has not added any destinations yet'
+}
 
 ⚠️ CRITICAL RULES:
 1. DO NOT add extra days! This trip has EXACTLY ${options.total_days || 'N/A'} days.
@@ -1077,6 +1093,12 @@ async function callOpenAI(
    - Example: 6 places for 2 days → Day 1: 3 places, Day 2: 3 places
    - ❌ WRONG: 6 places all in Day 1
    - ✅ CORRECT: 3 in Day 1, 3 in Day 2
+
+🆕 EXISTING DESTINATIONS AWARENESS:
+- If "Existing Destinations" shows places the user already added, ACKNOWLEDGE them!
+- When user asks for a travel plan, INCLUDE their pre-selected destinations
+- Reference them: "เห็นว่าคุณเลือก [names] ไว้แล้วครับ จะรวมไว้ในแผนให้เลยครับ"
+- Add MORE destinations to complement what user already has
 
 DECISION LOGIC:
 
@@ -2520,7 +2542,10 @@ Deno.serve(async (req: Request) => {
 
         end_date: payload.end_date,
 
-        destinations_count: payload.destinations_count
+        destinations_count: payload.destinations_count,
+
+        // 🆕 Pass existing destinations so AI knows what user already added
+        existing_destinations: payload.existing_destinations
 
       };
 

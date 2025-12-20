@@ -97,6 +97,10 @@ const MapView = ({
           center: { lat: 13.7563, lng: 100.5018 }, // Bangkok center
           zoom: 12,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
+          // 🆕 ให้ใช้ 1 นิ้วเลื่อนแผนที่ได้เลยบนมือถือ (ไม่ต้องใช้ 2 นิ้ว)
+          gestureHandling: 'greedy',
+          // ปิด fullscreen control บนมือถือ
+          fullscreenControl: false,
           styles: [
             {
               featureType: 'poi',

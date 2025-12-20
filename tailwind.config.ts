@@ -13,6 +13,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['"DM Sans"', '"Noto Sans Thai"', 'system-ui', '-apple-system', 'sans-serif'],
+        thai: ['"Noto Sans Thai"', '"DM Sans"', 'system-ui', 'sans-serif'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

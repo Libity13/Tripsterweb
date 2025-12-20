@@ -1,6 +1,6 @@
 // ItineraryPanel Component - Drag and drop destination list with Google Places integration
 import { useState, useEffect } from 'react';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -395,7 +395,17 @@ const ItineraryPanel = ({
   }, [destinations, totalDays]);
   
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // ต้องลาก 8px ก่อนจะเริ่ม drag
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250, // กดค้าง 250ms ก่อนจะเริ่ม drag บนมือถือ
+        tolerance: 5, // อนุญาตให้ขยับนิดหน่อยระหว่างรอ
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })

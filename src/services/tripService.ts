@@ -134,6 +134,43 @@ export const tripService = {
     } as Trip;
   },
 
+  // 🆕 Update trip name based on location context
+  async updateTripNameByLocation(tripId: string, location: string): Promise<void> {
+    try {
+      console.log(`📝 Updating trip name with location: ${location}`);
+      
+      // Get current trip to calculate days
+      const trip = await this.getTrip(tripId);
+      if (!trip) return;
+      
+      // Check if trip already has a location-based name
+      if (trip.title && !trip.title.includes('ทริปใหม่') && !trip.title.includes('แผนการเดินทางใหม่')) {
+        console.log('ℹ️ Trip already has a custom name, skipping update');
+        return;
+      }
+      
+      // Calculate days
+      const diffTime = new Date(trip.end_date || '').getTime() - new Date(trip.start_date || '').getTime();
+      const days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
+      
+      const newTitle = `ทริป${location} ${days} วัน`;
+      const newTitleEn = `${location} Trip ${days} Days`;
+      
+      const { error } = await supabase
+        .from('trips')
+        .update({ title: newTitle, title_en: newTitleEn })
+        .eq('id', tripId);
+      
+      if (error) {
+        console.error('❌ Failed to update trip name:', error);
+      } else {
+        console.log(`✅ Trip name updated to: ${newTitle}`);
+      }
+    } catch (error) {
+      console.error('❌ Error updating trip name:', error);
+    }
+  },
+
   // Add destination to trip
   async addDestination(tripId: string, destination: Omit<Destination, 'id'>): Promise<Destination> {
     console.log('📍 tripService.addDestination: Adding destination:', destination.name);
