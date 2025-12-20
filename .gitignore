@@ -54,3 +54,21 @@ coverage
 # Misc
 *.tsbuildinfo
 .cache
+
+# Temporary documentation (dev notes, test results)
+test_*.md
+test_*.sql
+fix_*.md
+fix_*.sql
+debug_*.md
+debug_*.sql
+verify_*.sql
+sql_patch_*.sql
+disable_rls_*.sql
+clean_*.sql
+*_FIX.md
+*_FIX_SUMMARY.md
+*_analysis.md
+*_guide.md
+*_setup.md
+*_complete.md
