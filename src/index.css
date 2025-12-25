@@ -170,4 +170,19 @@ All colors MUST be HSL.
   .animate-slide-up {
     animation: slide-up 0.4s ease-out;
   }
+
+  /* Prevent text selection on drag handles (mobile DnD fix) */
+  .touch-none {
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Prevent context menu on long press (mobile) */
+  .drag-handle {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
 }

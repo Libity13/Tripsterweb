@@ -127,13 +127,15 @@ const SortableItem = ({
       onClick={() => onClick(destination)}
     >
       <div className="flex items-start gap-3">
-        {/* Drag Handle */}
+        {/* Drag Handle - touch-action: none ป้องกัน text selection บนมือถือ */}
         <div
           {...attributes}
           {...listeners}
-          className="flex-shrink-0 p-1 hover:bg-gray-100 rounded cursor-grab active:cursor-grabbing"
+          className="flex-shrink-0 p-2 hover:bg-gray-100 rounded cursor-grab active:cursor-grabbing touch-none select-none"
+          onContextMenu={(e) => e.preventDefault()}
+          style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
         >
-          <GripVertical className="h-4 w-4 text-gray-400" />
+          <GripVertical className="h-5 w-5 text-gray-400" />
         </div>
 
         {/* Destination Info */}
@@ -397,13 +399,13 @@ const ItineraryPanel = ({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // ต้องลาก 8px ก่อนจะเริ่ม drag
+        distance: 5, // ต้องลาก 5px ก่อนจะเริ่ม drag
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250, // กดค้าง 250ms ก่อนจะเริ่ม drag บนมือถือ
-        tolerance: 5, // อนุญาตให้ขยับนิดหน่อยระหว่างรอ
+        delay: 200, // กดค้าง 200ms ก่อนจะเริ่ม drag บนมือถือ
+        tolerance: 8, // อนุญาตให้ขยับ 8px ระหว่างรอ (ป้องกัน accidental cancel)
       },
     }),
     useSensor(KeyboardSensor, {
