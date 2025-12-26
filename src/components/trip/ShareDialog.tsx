@@ -110,9 +110,85 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md p-0 gap-0 border-none shadow-2xl overflow-hidden">
-        {/* Content */}
-        <div className="p-5 sm:p-6 flex flex-col gap-5 bg-white overflow-hidden">
+      {/* Desktop Version */}
+      <DialogContent className="hidden sm:grid sm:max-w-4xl p-0 gap-0 overflow-hidden sm:rounded-3xl border-none shadow-2xl">
+        <div className="grid md:grid-cols-5 h-full">
+          {/* Left Column - Image */}
+          <div className="md:col-span-2 bg-gray-100 relative h-[200px] md:h-auto">
+            <img 
+              src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.0.3" 
+              alt="Trip" 
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/10" />
+          </div>
+
+          {/* Right Column - Content */}
+          <div className="md:col-span-3 p-6 md:p-8 flex flex-col gap-6 relative bg-white">
+            <div className="space-y-2 mt-2">
+              <h2 className="text-2xl font-bold tracking-tight">
+                {language === 'th' ? 'แชร์และรับคำแนะนำสำหรับทริปของคุณ' : 'Share and get Feedback on your trip'}
+              </h2>
+              <p className="text-muted-foreground">
+                {language === 'th' ? 'รับคำแนะนำจากกลุ่มเพื่อนของคุณและปรับปรุงทริปนี้ให้ดียิ่งขึ้น' : 'Get suggestions from your group and refine this trip.'}
+              </p>
+            </div>
+
+            {/* Social Icons Grid - Desktop */}
+            <div className="grid grid-cols-6 gap-4 my-4">
+              {socialApps.map((app) => (
+                <button
+                  key={app.name}
+                  onClick={app.action}
+                  disabled={isLoading || !shareUrl}
+                  className="flex flex-col items-center gap-2 group transition-transform hover:scale-105 active:scale-95"
+                >
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
+                    {app.icon}
+                  </div>
+                  <span className="text-xs font-medium text-gray-600">{app.name}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Page Link Section - Desktop */}
+            <div className="space-y-2">
+              <label className="text-base font-semibold">
+                {language === 'th' ? 'ลิงก์หน้าเว็บ' : 'Page Link'}
+              </label>
+              <div className="flex items-center bg-gray-50 rounded-xl border border-gray-200 p-1 pr-1 focus-within:ring-2 focus-within:ring-black/5 focus-within:border-gray-400 transition-all">
+                <div className="flex-1 px-3 py-2 text-sm text-gray-600 truncate font-mono">
+                  {isLoading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Generating link...
+                    </span>
+                  ) : (
+                    shareUrl || "https://tripster.com/..."
+                  )}
+                </div>
+                <Button 
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleCopyLink}
+                  disabled={!shareUrl}
+                  className="h-9 w-9 rounded-lg hover:bg-white shadow-sm border border-transparent hover:border-gray-200 transition-all"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4 text-gray-600" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+
+      {/* Mobile Version */}
+      <DialogContent className="sm:hidden p-0 gap-0 border-none shadow-2xl overflow-hidden">
+        <div className="p-5 flex flex-col gap-5 bg-white overflow-hidden">
           {/* Header */}
           <div className="text-center space-y-1">
             <h2 className="text-xl font-bold tracking-tight">
@@ -149,7 +225,7 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
             ))}
           </div>
 
-          {/* Copy Link Button - Simple on Mobile */}
+          {/* Copy Link Button - Mobile */}
           <Button 
             size="lg"
             variant={copied ? "default" : "outline"}
