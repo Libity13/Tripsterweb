@@ -536,14 +536,22 @@ export function LanguageSwitcher() {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="w-10 h-6 rounded-md overflow-hidden border border-white/20 hover:opacity-80 transition-opacity shadow-sm focus:outline-none focus:ring-2 focus:ring-white/50"
+        className="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-white/50"
         title={language === 'th' ? 'เปลี่ยนภาษา' : 'Switch Language'}
       >
-        <img 
-          src={flags[language]} 
-          alt={language} 
-          className="w-full h-full object-cover"
-        />
+        <div className="w-6 h-4 rounded overflow-hidden shadow-sm">
+          <img 
+            src={flags[language]} 
+            alt={language} 
+            className="w-full h-full object-cover"
+          />
+        </div>
+        <span className="text-sm font-medium text-white">
+          {language === 'th' ? 'TH' : 'EN'}
+        </span>
+        <svg className="w-3 h-3 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
       </button>
 
       {isOpen && (
