@@ -38,6 +38,7 @@ const Chat = () => {
   const [tripId, setTripId] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<string>('idle'); // Add AI status state
   const [lastUserMessage, setLastUserMessage] = useState<string>(''); // Store last message for retry
+  const [previousLocation, setPreviousLocation] = useState<string>(''); // Store previous location context
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Get AI config from context
@@ -152,17 +153,6 @@ const Chat = () => {
           // Process AI actions
           if (validatedResponse.actions && validatedResponse.actions.length > 0) {
             console.log('🎯 Processing AI actions:', validatedResponse.actions);
-            
-            // Check for location change
-            if (detectLocationChange(validatedResponse.actions, message)) {
-              // Store pending actions and show dialog
-              setPendingActions(validatedResponse.actions);
-              setShowLocationChangeDialog(true);
-              // Don't process actions yet, wait for user choice
-              setLoading(false);
-              setAiStatus('idle');
-              return;
-            }
             
             setAiStatus('processing'); // Set AI status to processing
             // Pass both user message and AI reply to help intent/day extraction
