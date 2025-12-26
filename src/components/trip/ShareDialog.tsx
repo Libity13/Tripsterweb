@@ -4,8 +4,6 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { 
   Copy, 
   Check, 
@@ -125,60 +123,52 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
             </p>
           </div>
 
-          {/* Social Icons Grid - 6 columns on all sizes */}
-          <div className="grid grid-cols-6 gap-2">
+          {/* Social Icons - Horizontal Scroll */}
+          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide -mx-1 px-1">
             {socialApps.map((app) => (
               <button
                 key={app.name}
                 onClick={app.action}
                 disabled={isLoading || !shareUrl}
-                className="flex flex-col items-center gap-1.5 group transition-transform hover:scale-105 active:scale-95"
+                className="flex flex-col items-center gap-1.5 group transition-transform hover:scale-105 active:scale-95 flex-shrink-0"
               >
-                <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
-                  {React.cloneElement(app.icon as React.ReactElement, { className: 'h-5 w-5 sm:h-6 sm:w-6 text-white' })}
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
+                  {React.cloneElement(app.icon as React.ReactElement, { className: 'h-5 w-5 text-white' })}
                 </div>
-                <span className="text-[10px] sm:text-xs font-medium text-gray-600 truncate w-full text-center">{app.name}</span>
+                <span className="text-xs font-medium text-gray-600">{app.name}</span>
               </button>
             ))}
           </div>
 
-          {/* Page Link Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">
-              {language === 'th' ? 'ลิงก์' : 'Link'}
-            </Label>
-            <div className="flex items-center bg-gray-50 rounded-xl border border-gray-200 p-1 gap-1">
-              <div className="flex-1 px-3 py-2 text-xs sm:text-sm text-gray-600 truncate font-mono">
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {language === 'th' ? 'กำลังสร้าง...' : 'Loading...'}
-                  </span>
-                ) : (
-                  shareUrl || "https://..."
-                )}
-              </div>
-              <Button 
-                size="sm"
-                variant={copied ? "default" : "outline"}
-                onClick={handleCopyLink}
-                disabled={!shareUrl}
-                className={`h-9 px-3 rounded-lg transition-all ${copied ? 'bg-green-500 hover:bg-green-600' : ''}`}
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 mr-1" />
-                    <span className="text-xs">{language === 'th' ? 'คัดลอกแล้ว!' : 'Copied!'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-1" />
-                    <span className="text-xs">{language === 'th' ? 'คัดลอก' : 'Copy'}</span>
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+          {/* Copy Link Button - Simple on Mobile */}
+          <Button 
+            size="lg"
+            variant={copied ? "default" : "outline"}
+            onClick={handleCopyLink}
+            disabled={!shareUrl || isLoading}
+            className={`w-full h-12 rounded-xl transition-all text-base font-medium ${
+              copied 
+                ? 'bg-green-500 hover:bg-green-600 text-white' 
+                : 'border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+            }`}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                {language === 'th' ? 'กำลังสร้างลิงก์...' : 'Generating...'}
+              </>
+            ) : copied ? (
+              <>
+                <Check className="h-5 w-5 mr-2" />
+                {language === 'th' ? 'คัดลอกแล้ว!' : 'Copied!'}
+              </>
+            ) : (
+              <>
+                <Copy className="h-5 w-5 mr-2" />
+                {language === 'th' ? 'คัดลอกลิงก์' : 'Copy Link'}
+              </>
+            )}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
