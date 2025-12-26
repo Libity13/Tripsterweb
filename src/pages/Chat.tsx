@@ -496,10 +496,21 @@ const Chat = () => {
         const startDate = new Date();
         const endDate = new Date(startDate.getTime() + (tripDuration - 1) * 24 * 60 * 60 * 1000);
         
+        // Extract location from actions or user message for trip title
+        const addAction = actions.find((a: any) => a.action === 'ADD_DESTINATIONS');
+        const locationContext = addAction?.location_context || 
+          messageText.match(/(?:ไป|เที่ยว|ทริป)\s*(?:จังหวัด)?([ก-๙a-zA-Z]+)/)?.[1] || '';
+        
+        // Create trip title with location and duration
+        const tripTitle = locationContext 
+          ? `ทริป${locationContext} ${tripDuration} วัน`
+          : `ทริป ${tripDuration} วัน`;
+        
         // Create a new trip for the user - let AI determine the duration
         const newTrip = await tripService.createTrip({
-          title: 'ทริปใหม่',
-          description: 'ทริปที่สร้างจาก AI Chat',
+          title: tripTitle,
+          title_en: locationContext ? `${locationContext} ${tripDuration} Day Trip` : `${tripDuration} Day Trip`,
+          description: `ทริปที่สร้างจาก AI Chat`,
           start_date: startDate.toISOString().split('T')[0],
           end_date: endDate.toISOString().split('T')[0], // Use calculated duration
           budget_max: 10000,

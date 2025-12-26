@@ -651,6 +651,11 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
               order_index: nextOrderIndex
             });
           }
+          
+          // 🆕 Update trip name based on location context
+          if (action.location_context) {
+            await tripService.updateTripNameByLocation(tripId, action.location_context);
+          }
           break;
         }
 
