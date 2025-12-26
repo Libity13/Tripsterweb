@@ -110,9 +110,9 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md p-0 gap-0 border-none shadow-2xl">
+      <DialogContent className="sm:max-w-md p-0 gap-0 border-none shadow-2xl overflow-hidden">
         {/* Content */}
-        <div className="p-5 sm:p-6 flex flex-col gap-5 bg-white">
+        <div className="p-5 sm:p-6 flex flex-col gap-5 bg-white overflow-hidden">
           {/* Header */}
           <div className="text-center space-y-1">
             <h2 className="text-xl font-bold tracking-tight">
@@ -123,10 +123,16 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
             </p>
           </div>
 
-          {/* Social Icons - Horizontal Scroll */}
+          {/* Social Icons - Horizontal Scroll Only */}
           <div 
-            className="flex gap-3 overflow-x-auto pb-2 -mx-5 px-5 snap-x snap-mandatory"
-            style={{ WebkitOverflowScrolling: 'touch' }}
+            className="flex gap-3 overflow-x-scroll overflow-y-hidden pb-2 -mx-5 px-5 snap-x snap-mandatory touch-pan-x"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorX: 'contain',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none'
+            }}
+            onTouchMove={(e) => e.stopPropagation()}
           >
             {socialApps.map((app) => (
               <button
