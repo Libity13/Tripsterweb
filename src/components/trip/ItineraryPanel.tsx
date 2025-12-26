@@ -1153,16 +1153,18 @@ const ItineraryPanel = ({
                             </div>
                           ) : (
                             dayDestinations.map((destination, index) => (
-                              <div key={destination.id} className="relative">
-                                {/* Order Number */}
-                                <div className="absolute -left-2 -top-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium z-10">
-                                  {index + 1}
-                                </div>
+                              <div key={destination.id}>
+                                <SortableItem
+                                  destination={destination}
+                                  onRemove={handleRemove}
+                                  onEdit={handleEdit}
+                                  onClick={handleClick}
+                                />
                                 
                                 {/* Distance to next destination - Clickable to open Google Maps */}
                                 {index < dayDestinations.length - 1 && (
-                                  <div className="absolute -bottom-3 left-4 right-4 z-0">
-                                    <div className="flex items-center justify-center gap-1 text-xs text-gray-400">
+                                  <div className="py-3 px-2">
+                                    <div className="flex items-center justify-center gap-2">
                                       {destination.latitude && destination.longitude && 
                                        dayDestinations[index + 1].latitude && dayDestinations[index + 1].longitude && (
                                         <>
@@ -1171,10 +1173,10 @@ const ItineraryPanel = ({
                                             href={`https://www.google.com/maps/dir/?api=1&origin=${destination.latitude},${destination.longitude}&destination=${dayDestinations[index + 1].latitude},${dayDestinations[index + 1].longitude}&travelmode=driving`}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="bg-white px-2 py-0.5 rounded-full border border-gray-200 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all cursor-pointer"
+                                            className="flex items-center gap-1.5 bg-white px-4 py-2 rounded-full border border-gray-200 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-all cursor-pointer text-sm font-medium shadow-sm active:scale-95"
                                             title="คลิกเพื่อเปิด Google Maps นำทาง"
                                           >
-                                            {routeOptimizationService['calculateDistance'](
+                                            🚗 {routeOptimizationService['calculateDistance'](
                                               destination.latitude,
                                               destination.longitude,
                                               dayDestinations[index + 1].latitude!,
@@ -1187,13 +1189,6 @@ const ItineraryPanel = ({
                                     </div>
                                   </div>
                                 )}
-                                
-                                <SortableItem
-                                  destination={destination}
-                                  onRemove={handleRemove}
-                                  onEdit={handleEdit}
-                                  onClick={handleClick}
-                                />
                               </div>
                             ))
                           )}
