@@ -112,10 +112,10 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-4xl p-0 gap-0 overflow-hidden sm:rounded-3xl border-none shadow-2xl">
+      <DialogContent className="sm:max-w-4xl p-0 gap-0 overflow-hidden sm:rounded-3xl border-none shadow-2xl max-h-[95vh] sm:max-h-none">
         <div className="grid md:grid-cols-5 h-full">
-          {/* Left Column - Image */}
-          <div className="md:col-span-2 bg-gray-100 relative h-[200px] md:h-auto">
+          {/* Left Column - Image (hidden on very small screens) */}
+          <div className="hidden sm:block md:col-span-2 bg-gray-100 relative h-[120px] sm:h-[180px] md:h-auto">
             <img 
               src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.0.3" 
               alt="Trip" 
@@ -125,18 +125,18 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
           </div>
 
           {/* Right Column - Content */}
-          <div className="md:col-span-3 p-6 md:p-8 flex flex-col gap-6 relative bg-white">
-            <div className="space-y-2 mt-4 md:mt-2">
-              <h2 className="text-2xl font-bold tracking-tight">
-                {language === 'th' ? 'แชร์และรับคำแนะนำสำหรับทริปของคุณ' : 'Share and get Feedback on your trip'}
+          <div className="md:col-span-3 p-4 sm:p-6 md:p-8 flex flex-col gap-4 sm:gap-6 relative bg-white">
+            <div className="space-y-2 mt-2">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
+                {language === 'th' ? 'แชร์ทริปของคุณ' : 'Share your trip'}
               </h2>
-              <p className="text-muted-foreground">
-                {language === 'th' ? 'รับคำแนะนำจากกลุ่มเพื่อนของคุณและปรับปรุงทริปนี้ให้ดียิ่งขึ้น' : 'Get suggestions from your group and refine this trip.'}
+              <p className="text-sm sm:text-base text-muted-foreground">
+                {language === 'th' ? 'รับคำแนะนำจากเพื่อนๆ' : 'Get suggestions from friends'}
               </p>
             </div>
 
-            {/* Social Icons Grid */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 my-4">
+            {/* Social Icons Grid - larger on mobile */}
+            <div className="grid grid-cols-3 gap-4 sm:grid-cols-6 sm:gap-3 my-2 sm:my-4">
               {socialApps.map((app) => (
                 <button
                   key={app.name}
@@ -144,7 +144,7 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
                   disabled={isLoading || !shareUrl}
                   className="flex flex-col items-center gap-2 group transition-transform hover:scale-105 active:scale-95"
                 >
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
+                  <div className={`w-14 h-14 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
                     {app.icon}
                   </div>
                   <span className="text-xs font-medium text-gray-600">{app.name}</span>
@@ -154,16 +154,16 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
 
             {/* Page Link Section */}
             <div className="space-y-2">
-              <Label className="text-base font-semibold">
+              <Label className="text-sm sm:text-base font-semibold">
                 {language === 'th' ? 'ลิงก์หน้าเว็บ' : 'Page Link'}
               </Label>
               <div className="relative group">
-                <div className="flex items-center bg-gray-50 rounded-xl border border-gray-200 p-1 pr-1 focus-within:ring-2 focus-within:ring-black/5 focus-within:border-gray-400 transition-all">
-                  <div className="flex-1 px-3 py-2 text-sm text-gray-600 truncate font-mono">
+                <div className="flex items-center bg-gray-50 rounded-xl border border-gray-200 p-1 focus-within:ring-2 focus-within:ring-black/5 focus-within:border-gray-400 transition-all">
+                  <div className="flex-1 px-3 py-2.5 sm:py-2 text-sm text-gray-600 truncate font-mono">
                     {isLoading ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="h-3 w-3 animate-spin" />
-                        Generating link...
+                        {language === 'th' ? 'กำลังสร้างลิงก์...' : 'Generating link...'}
                       </span>
                     ) : (
                       shareUrl || "https://tripster.com/..."
@@ -174,12 +174,12 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
                     variant="ghost"
                     onClick={handleCopyLink}
                     disabled={!shareUrl}
-                    className="h-9 w-9 rounded-lg hover:bg-white shadow-sm border border-transparent hover:border-gray-200 transition-all"
+                    className="h-10 w-10 sm:h-9 sm:w-9 rounded-lg hover:bg-white shadow-sm border border-transparent hover:border-gray-200 transition-all"
                   >
                     {copied ? (
-                      <Check className="h-4 w-4 text-green-600" />
+                      <Check className="h-5 w-5 sm:h-4 sm:w-4 text-green-600" />
                     ) : (
-                      <Copy className="h-4 w-4 text-gray-600" />
+                      <Copy className="h-5 w-5 sm:h-4 sm:w-4 text-gray-600" />
                     )}
                   </Button>
                 </div>

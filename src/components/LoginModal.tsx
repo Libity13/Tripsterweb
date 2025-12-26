@@ -117,16 +117,19 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
       onClick={onClose}
     >
       <Card 
-        className="w-full max-w-md mx-4 relative"
+        className="w-full sm:max-w-md sm:mx-4 relative rounded-t-2xl sm:rounded-xl max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <CardHeader>
+        {/* Mobile drag handle */}
+        <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-gray-300 mt-3 sm:hidden" />
+        
+        <CardHeader className="pb-2 sm:pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
               <User className="h-5 w-5" />
               {t('loginModal.title')}
             </CardTitle>
@@ -134,10 +137,10 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="h-8 w-8 rounded-full hover:bg-gray-100"
+              className="h-9 w-9 rounded-full hover:bg-gray-100"
               aria-label={t('loginModal.close')}
             >
-              <X className="h-4 w-4" />
+              <X className="h-5 w-5 sm:h-4 sm:w-4" />
             </Button>
           </div>
         </CardHeader>
@@ -182,7 +185,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                   </div>
                 </div>
                 
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" className="w-full h-11 sm:h-10 text-base sm:text-sm" disabled={loading}>
                   {loading ? t('loginModal.signInLoading') : t('loginModal.signInButton')}
                 </Button>
                 
@@ -198,7 +201,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                 <Button 
                   type="button" 
                   variant="outline" 
-                  className="w-full" 
+                  className="w-full h-11 sm:h-10" 
                   onClick={handleGoogleSignIn}
                   disabled={loading}
                 >
@@ -293,7 +296,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                   </div>
                 </div>
                 
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" className="w-full h-11 sm:h-10 text-base sm:text-sm" disabled={loading}>
                   {loading ? t('loginModal.signUpLoading') : t('loginModal.signUpButton')}
                 </Button>
                 
@@ -309,7 +312,7 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
                 <Button 
                   type="button" 
                   variant="outline" 
-                  className="w-full" 
+                  className="w-full h-11 sm:h-10" 
                   onClick={handleGoogleSignIn}
                   disabled={loading}
                 >
@@ -347,11 +350,11 @@ const LoginModal = ({ isOpen, onClose, onSuccess }: LoginModalProps) => {
             </div>
           </div>
           
-          <div className="mt-4 flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={onClose}>
+          <div className="mt-4 flex gap-2 pb-safe">
+            <Button variant="outline" className="flex-1 h-11 sm:h-10" onClick={onClose}>
               {t('loginModal.skip')}
             </Button>
-            <Button variant="outline" className="flex-1" onClick={() => window.location.reload()}>
+            <Button variant="outline" className="flex-1 h-11 sm:h-10" onClick={() => window.location.reload()}>
               {t('loginModal.refresh')}
             </Button>
           </div>

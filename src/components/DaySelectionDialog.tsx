@@ -27,13 +27,13 @@ export const DaySelectionDialog = ({
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+        <DialogHeader className="text-left">
+          <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
             <MapPin className="h-5 w-5 text-blue-600" />
             {t('dialog.daySelection.title')}
           </DialogTitle>
-          <DialogDescription>
-            {t('dialog.daySelection.description')} <strong>"{placeName}"</strong> {t('dialog.daySelection.intoPlan')}
+          <DialogDescription className="text-sm">
+            {t('dialog.daySelection.description')} <strong className="text-foreground">"{placeName}"</strong> {t('dialog.daySelection.intoPlan')}
           </DialogDescription>
         </DialogHeader>
         
@@ -45,7 +45,7 @@ export const DaySelectionDialog = ({
               <Button
                 key={day}
                 variant={isRecommended ? "default" : "outline"}
-                className={`h-20 flex flex-col items-center justify-center gap-1 relative ${
+                className={`h-16 sm:h-20 flex flex-col items-center justify-center gap-1 relative active:scale-95 transition-transform ${
                   isRecommended ? 'ring-2 ring-blue-400 shadow-lg' : ''
                 }`}
                 onClick={() => {
@@ -54,7 +54,7 @@ export const DaySelectionDialog = ({
                 }}
               >
                 <Calendar className={`h-5 w-5 ${isRecommended ? 'text-white' : 'text-blue-600'}`} />
-                <span className="font-semibold">{t('dialog.daySelection.day')} {day}</span>
+                <span className="font-semibold text-sm sm:text-base">{t('dialog.daySelection.day')} {day}</span>
                 
                 {/* แสดง Badge "แนะนำ" ถ้ามี */}
                 {isRecommended && (
@@ -81,8 +81,8 @@ export const DaySelectionDialog = ({
           </div>
         )}
         
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={onClose}>
+        <div className="flex justify-center sm:justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose} className="flex-1 sm:flex-none h-11 sm:h-10">
             {t('common.cancel')}
           </Button>
         </div>
