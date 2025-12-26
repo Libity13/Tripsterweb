@@ -160,13 +160,20 @@ const Chat = () => {
             await processAIActions(validatedResponse.actions, combinedContext);
             setAiStatus('completed'); // Set AI status to completed
             
+            // Show completed status for 2 seconds before hiding
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            setLoading(false);
+            setAiStatus('idle');
+            
             // Update previous location if present
             const recommendAction: any = validatedResponse.actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
             if (recommendAction?.location_context && !previousLocation) {
               setPreviousLocation(recommendAction.location_context);
             }
           } else {
-            setAiStatus('idle'); // Set AI status back to idle
+            // No actions - just chatting
+            setLoading(false);
+            setAiStatus('idle');
           }
         } else {
           // Fallback to original response if validation fails
@@ -203,7 +210,18 @@ const Chat = () => {
           // Process AI actions
           if (response.actions && response.actions.length > 0) {
             console.log('🎯 Processing AI actions:', response.actions);
+            setAiStatus('processing');
             await processAIActions(response.actions, message);
+            setAiStatus('completed');
+            
+            // Show completed status for 2 seconds before hiding
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            setLoading(false);
+            setAiStatus('idle');
+          } else {
+            // No actions - just chatting
+            setLoading(false);
+            setAiStatus('idle');
           }
         }
       } else {
@@ -213,6 +231,7 @@ const Chat = () => {
       console.error('AI error:', error);
       toast.error('เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่');
       setAiStatus('idle'); // Reset AI status on error
+      setLoading(false);
       
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -222,8 +241,6 @@ const Chat = () => {
         created_at: new Date().toISOString()
       };
       setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -503,7 +520,7 @@ const Chat = () => {
       await applyAIActions(currentTripId, { actions });
       
       console.log('✅ AI actions processed successfully');
-      setAiStatus('completed'); // Set AI status to completed
+      // Note: setAiStatus('completed') is handled by caller (handleSend)
       
       // Reload the trip to show updated data
       const updatedTrip = await tripService.getTrip(currentTripId);
