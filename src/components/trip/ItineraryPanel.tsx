@@ -141,28 +141,30 @@ const SortableItem = ({
           <GripVertical className="h-5 w-5 text-gray-400" />
         </div>
 
-        {/* Destination Info */}
+        {/* Destination Info - Compact on mobile, full on desktop */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <h3 className="font-semibold text-sm text-gray-900 mb-1">
+              <h3 className="font-semibold text-sm text-gray-900 mb-0.5 sm:mb-1 line-clamp-1 sm:line-clamp-none">
                 {destination.name}
               </h3>
-              <p className="text-xs text-gray-600 mb-2 line-clamp-2">
+              {/* Description - Hidden on mobile */}
+              <p className="hidden sm:block text-xs text-gray-600 mb-2 line-clamp-2">
                 {destination.description}
               </p>
               
-              {/* Google Places Details */}
+              {/* Google Places Details - Condensed on mobile */}
               {placeDetails && (
-                <div className="mb-2 space-y-1">
+                <div className="mb-1 sm:mb-2 space-y-0.5 sm:space-y-1">
                   {placeDetails.formatted_address && (
                     <p className="text-xs text-gray-500 flex items-start gap-1">
                       <MapPin className="h-3 w-3 mt-0.5 flex-shrink-0" />
                       <span className="line-clamp-1">{placeDetails.formatted_address}</span>
                     </p>
                   )}
+                  {/* Opening hours - Hidden on mobile */}
                   {placeDetails.opening_hours && (
-                    <div className="flex items-center gap-1 text-xs">
+                    <div className="hidden sm:flex items-center gap-1 text-xs">
                       <span className={`w-2 h-2 rounded-full ${placeDetails.opening_hours.open_now ? 'bg-green-500' : 'bg-red-500'}`}></span>
                       <span className={placeDetails.opening_hours.open_now ? 'text-green-600' : 'text-red-600'}>
                         {placeDetails.opening_hours.open_now ? 'เปิดอยู่' : 'ปิดอยู่'}
@@ -174,8 +176,9 @@ const SortableItem = ({
                       )}
                     </div>
                   )}
+                  {/* Photos count - Hidden on mobile */}
                   {placeDetails.photos && placeDetails.photos.length > 0 && (
-                    <div className="flex items-center gap-1 text-xs text-blue-600">
+                    <div className="hidden sm:flex items-center gap-1 text-xs text-blue-600">
                       <Image className="h-3 w-3" />
                       <span>มีรูปภาพ {placeDetails.photos.length} รูป</span>
                     </div>
@@ -183,32 +186,34 @@ const SortableItem = ({
                 </div>
               )}
               
-              {/* Stats */}
-              <div className="flex items-center gap-3 text-xs text-gray-500">
-                <div className="flex items-center gap-1">
+              {/* Stats - Compact on mobile */}
+              <div className="flex items-center gap-2 sm:gap-3 text-xs text-gray-500">
+                <div className="flex items-center gap-0.5 sm:gap-1">
                   <Star className="h-3 w-3 text-yellow-500" />
                   <span className="font-medium">{placeDetails?.rating || destination.rating}</span>
+                  {/* Review count - Hidden on mobile */}
                   {placeDetails?.user_ratings_total && (
-                    <span className="text-gray-400">({placeDetails.user_ratings_total.toLocaleString()})</span>
+                    <span className="hidden sm:inline text-gray-400">({placeDetails.user_ratings_total.toLocaleString()})</span>
                   )}
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 sm:gap-1">
                   <Clock className="h-3 w-3 text-blue-500" />
-                  <span>{destination.visit_duration} นาที</span>
+                  <span>{destination.visit_duration}<span className="hidden sm:inline"> นาที</span><span className="sm:hidden">m</span></span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 sm:gap-1">
                   <DollarSign className="h-3 w-3 text-green-500" />
                   <span>฿{(destination.estimated_cost || 0).toLocaleString()}</span>
+                  {/* Price level - Hidden on mobile */}
                   {placeDetails?.price_level && (
-                    <span className="text-gray-400">
+                    <span className="hidden sm:inline text-gray-400">
                       ({'$'.repeat(placeDetails.price_level)})
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Place Types */}
-              <div className="flex flex-wrap gap-1 mt-2">
+              {/* Place Types - Show only primary on mobile */}
+              <div className="flex flex-wrap gap-1 mt-1 sm:mt-2">
                 {/* Primary place type */}
                 {destination.place_type && (
                   <Badge 
@@ -216,27 +221,34 @@ const SortableItem = ({
                             destination.place_type === 'restaurant' ? 'destructive' : 'secondary'} 
                     className="text-xs"
                   >
-                    {destination.place_type === 'lodging' ? '🏨 ที่พัก' :
-                     destination.place_type === 'restaurant' ? '🍽️ ร้านอาหาร' :
-                     destination.place_type === 'tourist_attraction' ? '🏛️ ที่เที่ยว' : destination.place_type}
+                    {destination.place_type === 'lodging' ? '🏨' :
+                     destination.place_type === 'restaurant' ? '🍽️' :
+                     destination.place_type === 'tourist_attraction' ? '🏛️' : destination.place_type}
+                    <span className="hidden sm:inline ml-1">
+                      {destination.place_type === 'lodging' ? 'ที่พัก' :
+                       destination.place_type === 'restaurant' ? 'ร้านอาหาร' :
+                       destination.place_type === 'tourist_attraction' ? 'ที่เที่ยว' : ''}
+                    </span>
                   </Badge>
                 )}
-                {/* Additional place types */}
-                {destination.place_types && destination.place_types.slice(0, 2).map((type, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
-                    {type.replace('_', ' ')}
-                  </Badge>
-                ))}
-                {destination.place_types && destination.place_types.length > 2 && (
-                  <Badge variant="outline" className="text-xs">
-                    +{destination.place_types.length - 2}
-                  </Badge>
-                )}
+                {/* Additional place types - Hidden on mobile */}
+                <div className="hidden sm:flex gap-1">
+                  {destination.place_types && destination.place_types.slice(0, 2).map((type, index) => (
+                    <Badge key={index} variant="outline" className="text-xs">
+                      {type.replace('_', ' ')}
+                    </Badge>
+                  ))}
+                  {destination.place_types && destination.place_types.length > 2 && (
+                    <Badge variant="outline" className="text-xs">
+                      +{destination.place_types.length - 2}
+                    </Badge>
+                  )}
+                </div>
               </div>
 
-              {/* Google Photos */}
+              {/* Google Photos - Hidden on mobile */}
               {placeDetails?.photos && placeDetails.photos.length > 0 && (
-                <div className="mt-2">
+                <div className="hidden sm:block mt-2">
                   <div className="flex gap-1">
                     {placeDetails.photos.slice(0, 3).map((photo: any, index: number) => (
                       <div key={index} className="w-8 h-8 bg-gray-200 rounded overflow-hidden">
@@ -257,8 +269,8 @@ const SortableItem = ({
               )}
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-1 ml-2">
+            {/* Actions - Larger touch targets on mobile */}
+            <div className="flex flex-col sm:flex-row items-center gap-1 ml-1 sm:ml-2">
               {placeDetails && (
                 <Button
                   variant="ghost"
@@ -267,10 +279,10 @@ const SortableItem = ({
                     e.stopPropagation();
                     window.open(`https://www.google.com/maps/place/?q=place_id:${destination.place_id}`, '_blank');
                   }}
-                  className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700"
+                  className="h-8 w-8 sm:h-6 sm:w-6 p-0 text-blue-500 hover:text-blue-700 active:bg-blue-100"
                   title="ดูใน Google Maps"
                 >
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="h-4 w-4 sm:h-3 sm:w-3" />
                 </Button>
               )}
               <Button
@@ -280,9 +292,9 @@ const SortableItem = ({
                   e.stopPropagation();
                   onRemove(destination.id);
                 }}
-                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                className="h-8 w-8 sm:h-6 sm:w-6 p-0 text-red-500 hover:text-red-700 active:bg-red-100"
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="h-4 w-4 sm:h-3 sm:w-3" />
               </Button>
             </div>
           </div>
@@ -853,16 +865,15 @@ const ItineraryPanel = ({
 
                       <CardContent>
                         {dayDestinations.length === 0 ? (
-                          <div className="text-center py-4 text-gray-400">
-                            <p className="text-sm">ไม่มีสถานที่ในวันนี้</p>
+                          <div className="text-center py-6 text-gray-400">
+                            <p className="text-sm mb-3">ไม่มีสถานที่ในวันนี้</p>
                             {onAddDestination && (
                               <Button
                                 variant="outline"
-                                size="sm"
                                 onClick={() => onAddDestination(i + 1)}
-                                className="mt-2"
+                                className="h-12 px-6 text-base hover:bg-blue-50 hover:border-blue-300 active:scale-95 transition-transform"
                               >
-                                <Plus className="h-4 w-4 mr-2" />
+                                <Plus className="h-5 w-5 mr-2" />
                                 เพิ่มสถานที่
                               </Button>
                             )}
@@ -1126,17 +1137,16 @@ const ItineraryPanel = ({
                           )}
                           
                           {dayDestinations.length === 0 ? (
-                            <div className="text-center py-4 text-gray-400">
-                              <p className="text-sm">No destinations for Day {i + 1}</p>
-                              <p className="text-xs">Ask AI to add places for this day!</p>
+                            <div className="text-center py-6 text-gray-400">
+                              <p className="text-sm mb-1">No destinations for Day {i + 1}</p>
+                              <p className="text-xs mb-3">Ask AI to add places for this day!</p>
                               {onAddDestination && (
                                 <Button
                                   variant="outline"
-                                  size="sm"
                                   onClick={() => onAddDestination(i + 1)}
-                                  className="mt-2"
+                                  className="h-12 px-6 text-base hover:bg-blue-50 hover:border-blue-300 active:scale-95 transition-transform"
                                 >
-                                  <Plus className="h-4 w-4 mr-2" />
+                                  <Plus className="h-5 w-5 mr-2" />
                                   เพิ่มสถานที่
                                 </Button>
                               )}
@@ -1188,16 +1198,15 @@ const ItineraryPanel = ({
                             ))
                           )}
                           
-                          {/* Add Location Button at the end of each day */}
+                          {/* Add Location Button at the end of each day - Larger touch target */}
                           {onAddDestination && (
                             <div className="mt-4 pt-4 border-t border-gray-200">
                               <Button
                                 variant="outline"
-                                size="sm"
                                 onClick={() => onAddDestination(i + 1)}
-                                className="w-full"
+                                className="w-full h-12 text-base hover:bg-blue-50 hover:border-blue-300 active:scale-[0.98] transition-transform"
                               >
-                                <Plus className="h-4 w-4 mr-2" />
+                                <Plus className="h-5 w-5 mr-2" />
                                 เพิ่มสถานที่ในวันนี้
                               </Button>
                             </div>
