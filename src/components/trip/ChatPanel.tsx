@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import { findProvincesInText, getProvinceByAlias } from '@/data/provinces';
 import { supabase } from '@/lib/unifiedSupabaseClient';
 import { ChatMessage, Destination } from '@/types/database';
-import { LocationChangeDialog, LocationChangeChoice } from '@/components/LocationChangeDialog';
+// LocationChangeDialog removed - users should start a new trip for different province
 import { DaySelectionDialog } from '@/components/DaySelectionDialog';
 import { PlaceResolveLoadingModal } from '@/components/PlaceResolveLoadingModal';
 import { detectLanguage, type Language } from '@/hooks/useLanguage';
@@ -61,12 +61,6 @@ const ChatPanel = ({
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // Location change detection
-  const [previousLocation, setPreviousLocation] = useState<string | null>(null);
-  const [showLocationChangeDialog, setShowLocationChangeDialog] = useState(false);
-  const [pendingActions, setPendingActions] = useState<any[]>([]);
-  const [pendingNewLocation, setPendingNewLocation] = useState('');
   
   // Day selection for recommendations
   const [showDaySelection, setShowDaySelection] = useState(false);
@@ -143,38 +137,6 @@ const ChatPanel = ({
   }, [tripId]);
 
   // Initialize previousLocation from existing destinations
-  useEffect(() => {
-    const initializePreviousLocation = async () => {
-      if (tripId && !previousLocation) {
-        try {
-          console.log('🔍 Initializing previousLocation from existing destinations...');
-          const destinations = await databaseSyncService.loadDestinations(tripId);
-          
-          if (destinations.length > 0 && destinations[0].formatted_address) {
-            // Extract location from first destination's formatted_address
-            const location = destinations[0].formatted_address.split(',').pop()?.trim();
-            if (location) {
-              console.log(`📍 Initialized previousLocation: ${location}`);
-              setPreviousLocation(location);
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error initializing previousLocation:', error);
-        }
-      }
-    };
-
-    initializePreviousLocation();
-  }, [tripId, previousLocation]);
-
-  // [ลบ] useEffect นี้ซ้ำกับ useEffect ข้างบน
-  // useEffect(() => {
-  //   if (!tripId) return;
-  //   
-  //   console.log('🔄 Loading chat history once...');
-  //   loadChatHistory();
-  // }, [tripId]);
-
   // Real-time updates using Supabase Realtime
   useEffect(() => {
     if (!tripId) return;
@@ -314,229 +276,6 @@ const ChatPanel = ({
   };
 
   // Normalize location name for comparison
-  const normalizeLocation = (location: string): string => {
-    return location
-      .replace(/^จังหวัด/, '')  // Remove "จังหวัด" prefix
-      .replace(/\s+/g, '')       // Remove spaces
-      .toLowerCase()
-      .trim();
-  };
-
-  // Detect location change in AI actions or user message
-  const detectLocationChange = (actions: any[], userMessage: string): boolean => {
-    // Try to find location_context from actions
-    let newLocation = null;
-    
-    // Check RECOMMEND_PLACES first
-    const recommendAction = actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
-    if (recommendAction?.location_context) {
-      newLocation = recommendAction.location_context;
-    }
-    
-    // Check ADD_DESTINATIONS if no RECOMMEND_PLACES
-    if (!newLocation) {
-      const addAction = actions.find((a: any) => a.action === 'ADD_DESTINATIONS');
-      if (addAction?.location_context) {
-        newLocation = addAction.location_context;
-      }
-    }
-    
-    // Fallback: extract from user message
-    if (!newLocation && userMessage) {
-      const provinces = findProvincesInText(userMessage);
-      if (provinces.length > 0) {
-        newLocation = provinces[0].name; // Extract name from province object
-      }
-    }
-    
-    console.log('🔍 Location Detection:', {
-      newLocation,
-      previousLocation,
-      tripId: !!tripId,
-      hasPreviousLocation: !!previousLocation
-    });
-    
-    if (!newLocation) {
-      console.log('⚠️ No new location detected');
-      return false;
-    }
-
-    // If we have a trip but no previous location, set it first
-    if (tripId && !previousLocation) {
-      console.log(`📍 Setting initial location for existing trip: ${newLocation}`);
-      setPreviousLocation(newLocation);
-      return false;
-    }
-
-    // Check if location changed (with normalization for better matching)
-    if (previousLocation && tripId) {
-      const normalizedPrevious = normalizeLocation(previousLocation);
-      const normalizedNew = normalizeLocation(newLocation);
-      
-      console.log('🔍 Comparing locations:', {
-        previous: previousLocation,
-        new: newLocation,
-        normalizedPrevious,
-        normalizedNew,
-        isDifferent: normalizedPrevious !== normalizedNew
-      });
-      
-      if (normalizedPrevious !== normalizedNew) {
-        console.log(`🗺️ Location change detected: ${previousLocation} → ${newLocation}`);
-        console.log(`   From actions:`, actions.map(a => a.action).join(', '));
-        console.log(`   User message:`, userMessage);
-        setPendingNewLocation(newLocation);
-        return true;
-      } else {
-        console.log('✅ Same location, no change detected');
-      }
-    }
-    
-    // Update previous location if no trip exists yet (first time)
-    if (!previousLocation && !tripId) {
-      console.log(`📍 Setting initial location (no trip yet): ${newLocation}`);
-      setPreviousLocation(newLocation);
-    }
-    
-    return false;
-  };
-
-  // Handle location change choice
-  const handleLocationChoice = async (choice: 'new-trip' | 'add-location' | 'cancel') => {
-    setShowLocationChangeDialog(false);
-
-    if (choice === 'cancel') {
-      setPendingActions([]);
-      setPendingNewLocation('');
-      setLoading(false);
-      toast.info('ยกเลิกการเปลี่ยนปลายทาง');
-      return;
-    }
-
-    if (choice === 'new-trip') {
-      // Delete all destinations from current trip before creating new one
-      toast.success(`สร้างทริปใหม่: ${pendingNewLocation}`);
-      
-      try {
-        // Delete all destinations
-        if (tripId) {
-          console.log('🗑️ Deleting all destinations from trip:', tripId);
-          const { data: destinations, error: fetchError } = await supabase
-            .from('destinations')
-            .select('id')
-            .eq('trip_id', tripId);
-          
-          if (fetchError) {
-            console.error('Error fetching destinations:', fetchError);
-          } else if (destinations && destinations.length > 0) {
-            const { error: deleteError } = await supabase
-              .from('destinations')
-              .delete()
-              .eq('trip_id', tripId);
-            
-            if (deleteError) {
-              console.error('Error deleting destinations:', deleteError);
-            } else {
-              console.log('✅ Deleted all destinations:', destinations.length);
-            }
-          }
-        }
-        
-        // Update location and reload
-        setPreviousLocation(pendingNewLocation);
-        
-        // Process new actions immediately after clearing
-        if (pendingActions.length > 0 && tripId) {
-          console.log('📍 Processing new location actions:', pendingActions.length);
-          
-          // Count total destinations to geocode
-          const totalPlaces = pendingActions.reduce((sum, action) => {
-            if (action.action === 'ADD_DESTINATIONS' && action.destinations) {
-              return sum + action.destinations.length;
-            }
-            return sum;
-          }, 0);
-          
-          // Show geocoding modal
-          setGeocodingTotal(totalPlaces);
-          setGeocodingCurrent(0);
-          setGeocodingCurrentPlace('');
-          setGeocodingFailedPlaces([]);
-          setShowGeocodingModal(true);
-          
-          // Set up progress callbacks
-          const onGeocodingProgress = (current: number, total: number, placeName: string) => {
-            setGeocodingCurrent(current);
-            setGeocodingTotal(total);
-            setGeocodingCurrentPlace(placeName);
-          };
-          
-          const onGeocodingFailed = (placeName: string) => {
-            setGeocodingFailedPlaces(prev => [...prev, placeName]);
-          };
-          
-          // Sync with progress tracking
-          await databaseSyncService.syncAIActions(pendingActions, tripId, {
-            onGeocodingProgress,
-            onGeocodingFailed
-          });
-          
-          // Hide modal
-          setShowGeocodingModal(false);
-          
-          const newDestinations = await databaseSyncService.loadDestinations(tripId);
-          if (onDestinationsUpdate) {
-            onDestinationsUpdate(newDestinations);
-          }
-        }
-        
-        // Clear pending data
-        setPendingActions([]);
-        setPendingNewLocation('');
-        setLoading(false);
-        
-        toast.success('สร้างทริปใหม่เรียบร้อย!');
-      } catch (error) {
-        console.error('Error creating new trip:', error);
-        toast.error('เกิดข้อผิดพลาดในการสร้างทริปใหม่');
-        setLoading(false);
-      }
-      return;
-    } else if (choice === 'add-location') {
-      // Update location (allowing multi-destination)
-      setPreviousLocation(`${previousLocation}, ${pendingNewLocation}`);
-      
-      // Process pending actions with existing trip
-      if (pendingActions.length > 0 && tripId) {
-        toast.success(`เพิ่ม ${pendingNewLocation} เข้าทริปเดิม`);
-        try {
-          await databaseSyncService.syncAIActions(pendingActions, tripId);
-          const destinations = await databaseSyncService.loadDestinations(tripId);
-          if (onDestinationsUpdate) {
-            onDestinationsUpdate(destinations);
-          }
-        } catch (error) {
-          console.error('Error processing pending actions:', error);
-          toast.error('เกิดข้อผิดพลาดในการเพิ่มสถานที่');
-        }
-      }
-    }
-
-    // Clear pending data
-    setPendingActions([]);
-    setPendingNewLocation('');
-    setLoading(false);
-  };
-
-  // Handle undo
-  const handleUndo = () => {
-    setShowLocationChangeDialog(false);
-    setPendingActions([]);
-    setPendingNewLocation('');
-    setLoading(false);
-    toast.info('ยกเลิกการเปลี่ยนปลายทาง');
-  };
-
   const handleSend = async (message: string) => {
     if (!message.trim() || loading) return;
 
@@ -807,38 +546,19 @@ const ChatPanel = ({
             if (validatedResponse.actions && validatedResponse.actions.length > 0) {
               console.log('🎯 Processing AI actions:', validatedResponse.actions);
               
-              // Check for location change
-              if (detectLocationChange(validatedResponse.actions, message)) {
-                // Store pending actions and show dialog
-                const actionsWithContext = validatedResponse.actions.map(action => ({
-                  ...action,
-                  ...(extractedDay && { day: extractedDay })
-                }));
-                setPendingActions(actionsWithContext);
-                setShowLocationChangeDialog(true);
-                // Don't process actions yet, wait for user choice
-                setLoading(false);
-                return;
-              }
-              
               const actionsWithContext = validatedResponse.actions.map(action => ({
                 ...action,
                 ...(extractedDay && { day: extractedDay })
               }));
               await processAIActions(actionsWithContext, tripId);
               
-              // Update previous location after processing actions successfully
+              // 🆕 Update trip name based on location
               const recommendAction: any = validatedResponse.actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
               const addAction: any = validatedResponse.actions.find((a: any) => a.action === 'ADD_DESTINATIONS');
               const newLocation = recommendAction?.location_context || addAction?.location_context;
-              if (newLocation) {
-                console.log(`📍 Updating previousLocation to: ${newLocation}`);
-                setPreviousLocation(newLocation);
-                
-                // 🆕 Update trip name based on location
-                if (tripId) {
-                  await tripService.updateTripNameByLocation(tripId, newLocation);
-                }
+              if (newLocation && tripId) {
+                console.log(`📍 Updating trip name for location: ${newLocation}`);
+                await tripService.updateTripNameByLocation(tripId, newLocation);
               }
             }
           } else {
@@ -1097,14 +817,6 @@ const ChatPanel = ({
   return (
     <>
       {/* Location Change Dialog */}
-      <LocationChangeDialog
-        open={showLocationChangeDialog}
-        oldLocation={previousLocation || ''}
-        newLocation={pendingNewLocation}
-        onChoice={handleLocationChoice}
-        onUndo={handleUndo}
-      />
-      
       <Card className="h-full flex flex-col overflow-hidden">
       <CardHeader className="shrink-0">
         <div className="flex items-center justify-between">
@@ -1313,20 +1025,34 @@ const ChatPanel = ({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Start Templates */}
+          {/* Quick Start Templates - Horizontal scroll on mobile, grid on desktop */}
           {messages.length <= 1 && (
             <div className="space-y-3 mt-auto pt-4 shrink-0">
               <h4 className="text-sm font-medium text-gray-700">🚀 เริ่มต้นง่ายๆ:</h4>
-              <div className="grid grid-cols-2 gap-2">
+              {/* Mobile: Horizontal scroll */}
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x snap-mandatory md:hidden scrollbar-hide">
                 {quickStartTemplates.map((template, index) => (
                   <Button
                     key={index}
                     variant="outline"
-                    size="sm"
                     onClick={() => handleSend(template.prompt)}
-                    className="flex flex-col items-center p-3 h-auto text-xs hover:bg-blue-50 hover:border-blue-300"
+                    className="flex-shrink-0 flex flex-col items-center justify-center p-4 h-auto min-w-[120px] text-sm hover:bg-blue-50 hover:border-blue-300 snap-start"
                   >
-                    <span className="text-lg mb-1">{template.icon}</span>
+                    <span className="text-2xl mb-2">{template.icon}</span>
+                    <span className="font-medium whitespace-nowrap">{template.title}</span>
+                  </Button>
+                ))}
+              </div>
+              {/* Desktop: Grid layout */}
+              <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {quickStartTemplates.map((template, index) => (
+                  <Button
+                    key={index}
+                    variant="outline"
+                    onClick={() => handleSend(template.prompt)}
+                    className="flex flex-col items-center justify-center p-4 h-auto text-sm hover:bg-blue-50 hover:border-blue-300"
+                  >
+                    <span className="text-2xl mb-2">{template.icon}</span>
                     <span className="font-medium">{template.title}</span>
                   </Button>
                 ))}
@@ -1353,22 +1079,23 @@ const ChatPanel = ({
             </div>
           )} */}
 
-          {/* Input */}
-          <div className="flex space-x-2 mt-4 pt-2 shrink-0">
+          {/* Input - Sticky bottom on mobile */}
+          <div className="flex space-x-2 mt-4 pt-3 pb-2 shrink-0 bg-white border-t border-gray-100 sticky bottom-0 -mx-6 px-6 safe-area-bottom">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="ถามเกี่ยวกับแผนการเดินทางของคุณ..."
               onKeyPress={handleKeyPress}
               disabled={loading}
-              className="flex-1"
+              className="flex-1 h-11 text-base" // Larger touch target on mobile
             />
             <Button 
               onClick={() => handleSend(input)}
               disabled={loading || !input.trim()}
               size="icon"
+              className="h-11 w-11" // Larger touch target
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-5 w-5" />
             </Button>
           </div>
         </div>

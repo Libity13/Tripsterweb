@@ -111,18 +111,21 @@ const SortableItem = ({
     isDragging,
   } = useSortable({ id: destination.id });
 
+  // 🆕 Smooth spring-like animation for DnD
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1)', // Smooth spring easing
     opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+    scale: isDragging ? '1.02' : '1',
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`bg-white border rounded-lg p-3 mb-2 cursor-pointer hover:shadow-md transition-all ${
-        isDragging ? 'shadow-lg' : ''
+      className={`bg-white border rounded-lg p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow duration-200 ${
+        isDragging ? 'shadow-xl ring-2 ring-blue-400 ring-opacity-50' : ''
       }`}
       onClick={() => onClick(destination)}
     >
@@ -984,7 +987,7 @@ const ItineraryPanel = ({
                                   </div>
                                 </div>
 
-                                {/* Distance indicator to next destination */}
+                                {/* Distance indicator to next destination - Clickable to open Google Maps */}
                                 {index < dayDestinations.length - 1 && (() => {
                                   const nextDest = dayDestinations[index + 1];
                                   if (destination.latitude && destination.longitude && nextDest.latitude && nextDest.longitude) {
@@ -996,13 +999,22 @@ const ItineraryPanel = ({
                                     );
                                     const validation = routeOptimizationService.validateDistance(distance, false);
                                     
+                                    // 🆕 Create Google Maps directions URL
+                                    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${destination.latitude},${destination.longitude}&destination=${nextDest.latitude},${nextDest.longitude}&travelmode=driving`;
+                                    
                                     return (
                                       <div className="flex items-center justify-center my-2">
-                                        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${
-                                          validation.severity === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
-                                          validation.severity === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
-                                          'bg-green-50 text-green-700 border border-green-200'
-                                        }`}>
+                                        <a
+                                          href={googleMapsUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs cursor-pointer transition-all hover:scale-105 hover:shadow-md ${
+                                            validation.severity === 'error' ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100' :
+                                            validation.severity === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100' :
+                                            'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
+                                          }`}
+                                          title="คลิกเพื่อเปิด Google Maps นำทาง"
+                                        >
                                           <Navigation className="h-3 w-3" />
                                           <span>{distance.toFixed(1)} กม.</span>
                                           <span className="text-gray-500">•</span>
@@ -1010,7 +1022,7 @@ const ItineraryPanel = ({
                                           {validation.message && (
                                             <span className="ml-1">{validation.message.split(' ')[0]}</span>
                                           )}
-                                        </div>
+                                        </a>
                                       </div>
                                     );
                                   }
@@ -1137,7 +1149,7 @@ const ItineraryPanel = ({
                                   {index + 1}
                                 </div>
                                 
-                                {/* Distance to next destination */}
+                                {/* Distance to next destination - Clickable to open Google Maps */}
                                 {index < dayDestinations.length - 1 && (
                                   <div className="absolute -bottom-3 left-4 right-4 z-0">
                                     <div className="flex items-center justify-center gap-1 text-xs text-gray-400">
@@ -1145,14 +1157,20 @@ const ItineraryPanel = ({
                                        dayDestinations[index + 1].latitude && dayDestinations[index + 1].longitude && (
                                         <>
                                           <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
-                                          <span className="bg-white px-2 py-0.5 rounded-full border border-gray-200">
+                                          <a
+                                            href={`https://www.google.com/maps/dir/?api=1&origin=${destination.latitude},${destination.longitude}&destination=${dayDestinations[index + 1].latitude},${dayDestinations[index + 1].longitude}&travelmode=driving`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="bg-white px-2 py-0.5 rounded-full border border-gray-200 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all cursor-pointer"
+                                            title="คลิกเพื่อเปิด Google Maps นำทาง"
+                                          >
                                             {routeOptimizationService['calculateDistance'](
                                               destination.latitude,
                                               destination.longitude,
                                               dayDestinations[index + 1].latitude!,
                                               dayDestinations[index + 1].longitude!
                                             ).toFixed(1)} km
-                                          </span>
+                                          </a>
                                           <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
                                         </>
                                       )}

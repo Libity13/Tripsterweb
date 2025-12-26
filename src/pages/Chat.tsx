@@ -17,7 +17,7 @@ import { tripService } from '@/services/tripService';
 import { supabase } from '@/lib/unifiedSupabaseClient';
 import { ChatMessage, Destination } from '@/types/database';
 import { toast } from 'sonner';
-import { LocationChangeDialog, LocationChangeChoice } from '@/components/LocationChangeDialog';
+// LocationChangeDialog removed - users should start a new trip for different province
 
 const Chat = () => {
   const { language, t } = useLanguage();
@@ -39,13 +39,6 @@ const Chat = () => {
   const [aiStatus, setAiStatus] = useState<string>('idle'); // Add AI status state
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Location change detection states
-  const [previousLocation, setPreviousLocation] = useState<string | null>(null);
-  const [showLocationChangeDialog, setShowLocationChangeDialog] = useState(false);
-  const [pendingActions, setPendingActions] = useState<any[]>([]);
-  const [pendingNewLocation, setPendingNewLocation] = useState<string>('');
-  const [lastUserMessage, setLastUserMessage] = useState<string>('');
-  
   // Get AI config from context
   const { config: aiConfig, updateProvider, updateModel, getAvailableModels } = useAIConfig();
 
@@ -66,107 +59,8 @@ const Chat = () => {
     }
   }, [location.state]);
 
-  // Detect location change in AI actions or user message
-  const detectLocationChange = (actions: any[], userMessage: string): boolean => {
-    // Try to find location_context from actions
-    let newLocation = null;
-    
-    // Check RECOMMEND_PLACES first
-    const recommendAction = actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
-    if (recommendAction?.location_context) {
-      newLocation = recommendAction.location_context;
-    }
-    
-    // Check ADD_DESTINATIONS if no RECOMMEND_PLACES
-    if (!newLocation) {
-      const addAction = actions.find((a: any) => a.action === 'ADD_DESTINATIONS');
-      if (addAction?.location_context) {
-        newLocation = addAction.location_context;
-      }
-    }
-    
-    // Fallback: extract from user message
-    if (!newLocation && userMessage) {
-      const provinces = findProvincesInText(userMessage);
-      if (provinces.length > 0) {
-        newLocation = provinces[0].name; // Extract name from province object
-      }
-    }
-    
-    if (!newLocation) return false;
-
-    // Check if location changed and we have an existing trip
-    if (previousLocation && previousLocation !== newLocation && tripId) {
-      console.log(`🗺️ Location change detected: ${previousLocation} → ${newLocation}`);
-      console.log(`   From actions:`, actions.map(a => a.action).join(', '));
-      console.log(`   User message:`, userMessage);
-      setPendingNewLocation(newLocation);
-      return true;
-    }
-    
-    // Update previous location if no trip exists yet (first time)
-    if (!previousLocation && !tripId) {
-      console.log(`📍 Setting initial location: ${newLocation}`);
-      setPreviousLocation(newLocation);
-    }
-    
-    return false;
-  };
-
-  // Handle location change choice
-  const handleLocationChoice = async (choice: LocationChangeChoice) => {
-    setShowLocationChangeDialog(false);
-
-    if (choice === 'cancel') {
-      setPendingActions([]);
-      setPendingNewLocation('');
-      setLoading(false);
-      setAiStatus('idle');
-      toast.info('ยกเลิกการเปลี่ยนปลายทาง');
-      return;
-    }
-
-    if (choice === 'new-trip') {
-      console.log('🆕 Creating new trip for:', pendingNewLocation);
-      
-      // Clear old trip data
-      setTripId(null);
-      setMessages([]);
-      
-      // Update location
-      setPreviousLocation(pendingNewLocation);
-      
-      // Re-send the last message to create new trip
-      if (lastUserMessage) {
-        toast.success(`เริ่มวางแผนทริปใหม่ที่ ${pendingNewLocation}`);
-        setTimeout(() => {
-          handleSend(lastUserMessage);
-        }, 500);
-      }
-    } else if (choice === 'add-location') {
-      console.log('➕ Adding location to existing trip:', pendingNewLocation);
-      
-      // Update location (allowing multi-destination)
-      setPreviousLocation(`${previousLocation}, ${pendingNewLocation}`);
-      
-      // Process pending actions with existing trip
-      if (pendingActions.length > 0) {
-        toast.success(`เพิ่ม ${pendingNewLocation} เข้าทริปเดิม`);
-        const combinedContext = lastUserMessage;
-        await processAIActions(pendingActions, combinedContext);
-      }
-    }
-
-    // Clear pending data
-    setPendingActions([]);
-    setPendingNewLocation('');
-    setLoading(false);
-    setAiStatus('idle');
-  };
-
-  // Handle undo
+  // Handle undo (simplified - no location change dialog)
   const handleUndo = () => {
-    setShowLocationChangeDialog(false);
     setPendingActions([]);
     setPendingNewLocation('');
     setLoading(false);
@@ -1622,14 +1516,6 @@ Return only place names, one per line:`;
         </div>
       </div>
       
-      {/* Location Change Dialog */}
-      <LocationChangeDialog
-        open={showLocationChangeDialog}
-        oldLocation={previousLocation || ''}
-        newLocation={pendingNewLocation}
-        onChoice={handleLocationChoice}
-        onUndo={handleUndo}
-      />
     </div>
   );
 };

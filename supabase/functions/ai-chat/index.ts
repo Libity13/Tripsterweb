@@ -1177,7 +1177,7 @@ EXTRACT DESTINATION NAME FROM USER MESSAGE:
 
         messages: messages,
 
-        max_tokens: mode === 'narrative' ? 2000 : 800,
+        max_tokens: mode === 'narrative' ? 2500 : 1500, // 🆕 Increased for complex responses with existing_destinations
 
         temperature: temperature
 
@@ -1232,16 +1232,18 @@ EXTRACT DESTINATION NAME FROM USER MESSAGE:
         const result = await response.json();
 
         const content = result.choices?.[0]?.message?.content || "{}";
-
         
+        console.log('📥 OpenAI raw response length:', content.length);
 
         try {
 
-            return parseJsonWithRecovery(content);
+            const parsed = parseJsonWithRecovery(content);
+            console.log('✅ OpenAI JSON parsed successfully');
+            return parsed;
 
         } catch (parseError) {
 
-            console.error('OpenAI JSON parse error:', {
+            console.error('❌ OpenAI JSON parse error:', {
 
                 error: parseError,
 
@@ -1251,13 +1253,19 @@ EXTRACT DESTINATION NAME FROM USER MESSAGE:
 
             if (retryCount < 1) {
 
-                console.log('Retrying OpenAI call...');
+                console.log('🔄 Retrying OpenAI call...');
 
                 return await callOpenAI(userMessage, locale, conversationHistory, options, retryCount + 1);
 
             }
 
-            throw parseError;
+            // 🆕 Final fallback instead of throwing
+            console.log('⚠️ OpenAI parse failed after retry, returning fallback');
+            return { 
+              reply: "ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้ง", 
+              actions: [{ action: "NO_ACTION" }],
+              _error: "JSON parse failed after retry"
+            };
 
         }
 
@@ -2136,9 +2144,11 @@ async function callGemini(
 
             temperature: temperature,
 
-            maxOutputTokens: mode === 'narrative' ? 2000 : 1000,
+            maxOutputTokens: mode === 'narrative' ? 2500 : 1500, // 🆕 Increased for complex responses
 
-            topP: 0.9
+            topP: 0.9,
+            
+            responseMimeType: "application/json" // 🆕 Force JSON response from Gemini
 
         }
 
@@ -2178,39 +2188,35 @@ async function callGemini(
 
     let content = result?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
     
-    // 🆕 Strip markdown code blocks if present (Gemini often wraps JSON in ```json...```)
-    content = content.trim();
-    if (content.startsWith('```json')) {
-      content = content.slice(7); // Remove ```json
-    } else if (content.startsWith('```')) {
-      content = content.slice(3); // Remove ```
-    }
-    if (content.endsWith('```')) {
-      content = content.slice(0, -3); // Remove trailing ```
-    }
-    content = content.trim();
-
-    // Validate JSON
-
-    let parsed;
-
-    try {
-
-      parsed = JSON.parse(content);
-
-    } catch (parseError) {
-
-      console.error('JSON parse error:', parseError, '\nContent:', content.substring(0, 200));
-
-      // Return as text if not JSON
-
-      return { reply: content, actions: [] };
-
-    }
-
+    console.log('📥 Gemini raw response length:', content.length);
     
-
-    return parsed;
+    // 🆕 Use the robust parseJsonWithRecovery function (same as OpenAI/Claude)
+    try {
+      const parsed = parseJsonWithRecovery(content);
+      console.log('✅ Gemini JSON parsed successfully');
+      return parsed;
+    } catch (parseError) {
+      console.error('❌ Gemini JSON parse error:', parseError);
+      console.error('📝 Content preview:', content.substring(0, 500));
+      
+      // 🆕 Advanced fallback: try to extract meaningful response
+      // Check if response contains narrative text without JSON structure
+      if (content.length > 50 && !content.includes('{')) {
+        console.log('⚠️ Gemini returned narrative text instead of JSON, wrapping it');
+        return { 
+          reply: content.substring(0, 500), // Truncate very long responses
+          actions: [{ action: "NO_ACTION" }],
+          _warning: "Response was not JSON, converted from text"
+        };
+      }
+      
+      // Final fallback
+      return { 
+        reply: "ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้ง", 
+        actions: [{ action: "NO_ACTION" }],
+        _error: "JSON parse failed"
+      };
+    }
 
 }
 
