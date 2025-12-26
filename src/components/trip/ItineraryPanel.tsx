@@ -94,12 +94,14 @@ const SortableItem = ({
   destination, 
   onRemove, 
   onEdit, 
-  onClick 
+  onClick,
+  index 
 }: { 
   destination: Destination;
   onRemove: (id: string) => void;
   onEdit: (destination: Destination) => void;
   onClick: (destination: Destination) => void;
+  index?: number;
 }) => {
   const { placeDetails, loading } = useGooglePlaces(destination);
   const {
@@ -130,15 +132,20 @@ const SortableItem = ({
       onClick={() => onClick(destination)}
     >
       <div className="flex items-start gap-3">
-        {/* Drag Handle - touch-action: none ป้องกัน text selection บนมือถือ */}
+        {/* Index Number + Drag Handle */}
         <div
           {...attributes}
           {...listeners}
-          className="flex-shrink-0 p-2 hover:bg-gray-100 rounded cursor-grab active:cursor-grabbing touch-none select-none"
+          className="flex-shrink-0 flex flex-col items-center gap-1 p-2 hover:bg-gray-100 rounded cursor-grab active:cursor-grabbing touch-none select-none"
           onContextMenu={(e) => e.preventDefault()}
           style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
         >
-          <GripVertical className="h-5 w-5 text-gray-400" />
+          {index !== undefined && (
+            <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold flex items-center justify-center">
+              {index + 1}
+            </span>
+          )}
+          <GripVertical className="h-4 w-4 text-gray-400" />
         </div>
 
         {/* Destination Info - Compact on mobile, full on desktop */}
@@ -1160,6 +1167,7 @@ const ItineraryPanel = ({
                                   onRemove={handleRemove}
                                   onEdit={handleEdit}
                                   onClick={handleClick}
+                                  index={index}
                                 />
                                 
                                 {/* Distance to next destination - Clickable to open Google Maps */}
