@@ -138,23 +138,16 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
               </p>
             </div>
 
-            {/* Social Icons - Scroll on Mobile, Grid on Desktop */}
-            <div 
-              className="flex sm:grid sm:grid-cols-6 gap-4 sm:gap-3 overflow-x-auto sm:overflow-visible pb-2 sm:pb-0 -mx-5 sm:mx-0 px-5 sm:px-0 my-2 sm:my-4"
-              style={{ 
-                WebkitOverflowScrolling: 'touch',
-                scrollbarWidth: 'none',
-                msOverflowStyle: 'none'
-              }}
-            >
+            {/* Social Icons - 3x2 Grid on Mobile, 6 columns on Desktop */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 sm:gap-3 my-2 sm:my-4">
               {socialApps.map((app) => (
                 <button
                   key={app.name}
                   onClick={app.action}
                   disabled={isLoading || !shareUrl}
-                  className="flex flex-col items-center gap-2 group transition-transform hover:scale-105 active:scale-95 flex-shrink-0 min-w-[60px] sm:min-w-0"
+                  className="flex flex-col items-center gap-2 group transition-transform hover:scale-105 active:scale-95"
                 >
-                  <div className={`w-14 h-14 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
+                  <div className={`w-12 h-12 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
                     {app.icon}
                   </div>
                   <span className="text-xs font-medium text-gray-600">{app.name}</span>
