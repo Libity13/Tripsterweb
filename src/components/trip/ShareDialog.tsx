@@ -110,7 +110,7 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md p-0 gap-0 overflow-hidden border-none shadow-2xl">
+      <DialogContent className="sm:max-w-md p-0 gap-0 border-none shadow-2xl">
         {/* Content */}
         <div className="p-5 sm:p-6 flex flex-col gap-5 bg-white">
           {/* Header */}
@@ -124,16 +124,19 @@ export function ShareDialog({ isOpen, onClose, tripId, tripTitle }: ShareDialogP
           </div>
 
           {/* Social Icons - Horizontal Scroll */}
-          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide -mx-1 px-1">
+          <div 
+            className="flex gap-3 overflow-x-auto pb-2 -mx-5 px-5 snap-x snap-mandatory"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
             {socialApps.map((app) => (
               <button
                 key={app.name}
                 onClick={app.action}
                 disabled={isLoading || !shareUrl}
-                className="flex flex-col items-center gap-1.5 group transition-transform hover:scale-105 active:scale-95 flex-shrink-0"
+                className="flex flex-col items-center gap-1.5 group transition-transform hover:scale-105 active:scale-95 flex-shrink-0 snap-center min-w-[60px]"
               >
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
-                  {React.cloneElement(app.icon as React.ReactElement, { className: 'h-5 w-5 text-white' })}
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-sm ${app.color} text-white transition-shadow group-hover:shadow-md`}>
+                  {React.cloneElement(app.icon as React.ReactElement, { className: 'h-6 w-6 text-white' })}
                 </div>
                 <span className="text-xs font-medium text-gray-600">{app.name}</span>
               </button>
