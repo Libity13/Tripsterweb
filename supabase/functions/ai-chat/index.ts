@@ -352,7 +352,7 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
         {
 
-          "action": "ADD_DESTINATIONS" | "REMOVE_DESTINATIONS" | "MOVE_DESTINATION" | "REORDER_DESTINATIONS" | "UPDATE_TRIP_INFO" | "RECOMMEND_PLACES" | "ASK_PERSONAL_INFO" | "NO_ACTION",
+          "action": "ADD_DESTINATIONS" | "REMOVE_DESTINATIONS" | "MOVE_DESTINATION" | "REORDER_DESTINATIONS" | "UPDATE_TRIP_INFO" | "MODIFY_TRIP" | "RECOMMEND_PLACES" | "ASK_PERSONAL_INFO" | "NO_ACTION",
 
           "destinations": [
 
@@ -402,6 +402,16 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
             "travel_style": "string (ผ่อนคลาย, ผจญภัย, วัฒนธรรม, ช้อปปิ้ง)"
 
+          },
+
+          "trip_modification": {
+
+            "new_total_days": "number (new total days for trip)",
+
+            "extend_to_province": "string (optional, new province to extend trip to)",
+
+            "modification_type": "ADD_DAYS" | "REMOVE_DAYS" | "CHANGE_DATES"
+
           }
 
         }
@@ -424,9 +434,19 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
 
     - If user wants to reorder multiple places, use action: "REORDER_DESTINATIONS"
 
+    - If user wants to ADD more days, EXTEND trip, or CHANGE trip duration, use action: "MODIFY_TRIP"
+
     - If you need to ask about personal preferences (companions, budget, style), use action: "ASK_PERSONAL_INFO"
 
     - If no specific action needed, use action: "NO_ACTION"
+
+    
+    For MODIFY_TRIP (เพิ่มวัน, ขยายทริป, เปลี่ยนจำนวนวัน):
+    - Use when user says: "เพิ่มวันที่ 3", "ขยายเป็น 4 วัน", "อยากไปเพิ่มอีก 2 วัน", "ลดเหลือ 2 วัน"
+    - Include trip_modification with new_total_days
+    - If extending to new province, include extend_to_province
+    - Also provide ADD_DESTINATIONS with suggested places for new days
+    - Example: User says "เพิ่มวันที่ 3 ไปแพร่" → MODIFY_TRIP with new_total_days: 3, extend_to_province: "แพร่"
 
     
 
@@ -668,13 +688,21 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
     - Example: Original trip is 2 days in Chiang Mai, user says "เปลี่ยนไปภูเก็ต"
       → Remove all Chiang Mai places, Add Phuket places for Day 1 AND Day 2 (NOT Day 3!)
 
-    🚫 FORBIDDEN - UPDATE_TRIP_INFO RESTRICTIONS:
-    - Do NOT use "UPDATE_TRIP_INFO" to change the number of days unless user explicitly says:
-      • "เพิ่มวัน" (add days), "เพิ่มเป็น X วัน" 
+    🚫 FORBIDDEN - UPDATE_TRIP_INFO vs MODIFY_TRIP:
+    - Do NOT use "UPDATE_TRIP_INFO" to change the number of days
+    - Use "MODIFY_TRIP" when user wants to:
+      • "เพิ่มวัน" (add days), "เพิ่มเป็น X วัน", "เพิ่มวันที่ 3"
       • "ลดวัน" (reduce days), "เปลี่ยนเป็น X วัน"
       • "extend trip", "shorten trip", "change to X days"
+      • "ขยายทริป", "ต่อทริป", "เพิ่มอีก X วัน"
     - Changing location DOES NOT mean changing duration!
     - "เปลี่ยนจังหวัด" ≠ "เปลี่ยนจำนวนวัน"
+    
+    ✅ MODIFY_TRIP Examples:
+    - "เพิ่มวันที่ 3" → MODIFY_TRIP with new_total_days: 3, modification_type: "ADD_DAYS"
+    - "เพิ่มวันที่ 3 ไปจังหวัดแพร่" → MODIFY_TRIP with new_total_days: 3, extend_to_province: "แพร่"
+    - "ลดเหลือ 2 วัน" → MODIFY_TRIP with new_total_days: 2, modification_type: "REMOVE_DAYS"
+    - "ต่อทริปไปอีก 2 วัน" → MODIFY_TRIP with new_total_days: (current + 2)
 
     - NEVER ask for companions/budget in modification requests
     

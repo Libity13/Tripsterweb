@@ -81,6 +81,15 @@ export const NoActionSchema = z.object({
   action: z.literal("NO_ACTION")
 });
 
+export const ModifyTripSchema = z.object({
+  action: z.literal("MODIFY_TRIP"),
+  trip_modification: z.object({
+    new_total_days: z.number().int().min(1).describe('จำนวนวันใหม่ของทริป'),
+    extend_to_province: z.string().optional().describe('จังหวัดที่ต้องการขยายทริปไป'),
+    modification_type: z.enum(["ADD_DAYS", "REMOVE_DAYS", "CHANGE_DATES"]).optional().describe('ประเภทการแก้ไข')
+  }).describe('ข้อมูลการแก้ไขทริป')
+});
+
 // Main discriminated union
 export const TripActionSchema = z.discriminatedUnion("action", [
   AddDestinationsSchema,
@@ -88,6 +97,7 @@ export const TripActionSchema = z.discriminatedUnion("action", [
   ReorderDestinationsSchema,
   MoveDestinationSchema,
   UpdateTripInfoSchema,
+  ModifyTripSchema,
   RecommendPlacesSchema,
   AskPersonalInfoSchema,
   NoActionSchema
@@ -111,3 +121,4 @@ export type UpdateTripInfo = z.infer<typeof UpdateTripInfoSchema>;
 export type RecommendPlaces = z.infer<typeof RecommendPlacesSchema>;
 export type AskPersonalInfo = z.infer<typeof AskPersonalInfoSchema>;
 export type NoAction = z.infer<typeof NoActionSchema>;
+export type ModifyTrip = z.infer<typeof ModifyTripSchema>;

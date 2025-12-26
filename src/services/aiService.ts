@@ -484,8 +484,9 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
     }
 
     // [FIX] Sort actions to ensure correct execution order
-    // UPDATE_TRIP_INFO (resize trip) -> REMOVE (clear old) -> ADD (add new to correct days) -> REORDER
+    // MODIFY_TRIP (resize trip first) -> UPDATE_TRIP_INFO -> REMOVE (clear old) -> ADD (add new to correct days) -> REORDER
     const ACTION_PRIORITY: Record<string, number> = {
+      'MODIFY_TRIP': 0,
       'UPDATE_TRIP_INFO': 1,
       'REMOVE_DESTINATIONS': 2,
       'ADD_DESTINATIONS': 3,
@@ -671,6 +672,30 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
         case "RECOMMEND_PLACES": {
           console.log(`💡 Place recommendations:`, action.recommendations);
           // แสดงผลอย่างเดียว ไม่ลง DB (หรือจะเปิดเป็นฟังก์ชันเพิ่มก็ได้)
+          break;
+        }
+
+        case "MODIFY_TRIP": {
+          console.log(`🔄 Modifying trip:`, action);
+          const tripModification = (action as any).trip_modification;
+          if (tripModification) {
+            const trip = await tripService.getTrip(tripId);
+            if (trip) {
+              const newTotalDays = tripModification.new_total_days || 1;
+              
+              console.log(`📅 Changing trip duration to ${newTotalDays} days`);
+              
+              // updateTripInfo will automatically calculate end_date based on days
+              await tripService.updateTripInfo(tripId, {
+                days: newTotalDays
+              });
+              
+              // If extending to new province, log it (destinations will be added by separate ADD_DESTINATIONS action)
+              if (tripModification.extend_to_province) {
+                console.log(`🗺️ Trip extended to new province: ${tripModification.extend_to_province}`);
+              }
+            }
+          }
           break;
         }
 
