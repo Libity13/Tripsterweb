@@ -37,6 +37,7 @@ const Chat = () => {
   const [suggestedPlaces, setSuggestedPlaces] = useState<any[]>([]);
   const [tripId, setTripId] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<string>('idle'); // Add AI status state
+  const [lastUserMessage, setLastUserMessage] = useState<string>(''); // Store last message for retry
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Get AI config from context
@@ -59,13 +60,11 @@ const Chat = () => {
     }
   }, [location.state]);
 
-  // Handle undo (simplified - no location change dialog)
+  // Handle undo - cancel current operation
   const handleUndo = () => {
-    setPendingActions([]);
-    setPendingNewLocation('');
     setLoading(false);
     setAiStatus('idle');
-    toast.info('ยกเลิกการเปลี่ยนปลายทาง');
+    toast.info(language === 'th' ? 'ยกเลิกแล้ว' : 'Cancelled');
   };
 
   const handleSend = async (message: string) => {
