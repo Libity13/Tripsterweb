@@ -1014,26 +1014,27 @@ const ItineraryPanel = ({
                                     const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${destination.latitude},${destination.longitude}&destination=${nextDest.latitude},${nextDest.longitude}&travelmode=driving`;
                                     
                                     return (
-                                      <div className="flex items-center justify-center my-2">
+                                      <div className="flex items-center justify-center my-4 py-2">
+                                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
                                         <a
                                           href={googleMapsUrl}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs cursor-pointer transition-all hover:scale-105 hover:shadow-md ${
+                                          className={`flex items-center gap-2 px-4 py-2 mx-3 rounded-full text-sm font-medium cursor-pointer transition-all hover:scale-105 hover:shadow-md active:scale-95 ${
                                             validation.severity === 'error' ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100' :
                                             validation.severity === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100' :
                                             'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
                                           }`}
                                           title="คลิกเพื่อเปิด Google Maps นำทาง"
                                         >
-                                          <Navigation className="h-3 w-3" />
-                                          <span>{distance.toFixed(1)} กม.</span>
+                                          🚗 <span>{distance.toFixed(1)} กม.</span>
                                           <span className="text-gray-500">•</span>
                                           <span>{Math.round((distance / 40) * 60)} นาที</span>
                                           {validation.message && (
                                             <span className="ml-1">{validation.message.split(' ')[0]}</span>
                                           )}
                                         </a>
+                                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
                                       </div>
                                     );
                                   }
