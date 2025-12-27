@@ -681,25 +681,51 @@ export async function applyAIActions(tripId: string, rawAi: any): Promise<void> 
         }
 
         case "MODIFY_TRIP": {
-          console.log(`🔄 Modifying trip:`, action);
-          const tripModification = (action as any).trip_modification;
-          if (tripModification) {
+          console.log(`🔄 Modifying trip:`, JSON.stringify(action, null, 2));
+          
+          // Handle both nested and flat formats
+          const tripModification = (action as any).trip_modification || action;
+          const newTotalDays = tripModification.new_total_days || tripModification.new_days || null;
+          const extendToProvince = tripModification.extend_to_province || null;
+          
+          console.log(`📅 MODIFY_TRIP parsed: newTotalDays=${newTotalDays}, extendToProvince=${extendToProvince}`);
+          
+          if (newTotalDays && newTotalDays > 0) {
             const trip = await tripService.getTrip(tripId);
             if (trip) {
-              const newTotalDays = tripModification.new_total_days || 1;
+              // Calculate current days
+              const currentStart = new Date(trip.start_date);
+              const currentEnd = new Date(trip.end_date);
+              const currentDays = Math.max(1, Math.ceil((currentEnd.getTime() - currentStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
               
-              console.log(`📅 Changing trip duration to ${newTotalDays} days`);
+              console.log(`📅 Current trip: ${currentDays} days (${trip.start_date} to ${trip.end_date})`);
+              console.log(`📅 Changing trip duration from ${currentDays} to ${newTotalDays} days`);
               
-              // updateTripInfo will automatically calculate end_date based on days
+              // Update trip duration
               await tripService.updateTripInfo(tripId, {
                 days: newTotalDays
               });
               
-              // If extending to new province, log it (destinations will be added by separate ADD_DESTINATIONS action)
-              if (tripModification.extend_to_province) {
-                console.log(`🗺️ Trip extended to new province: ${tripModification.extend_to_province}`);
+              console.log(`✅ Trip duration updated to ${newTotalDays} days`);
+              
+              // If extending to new province, update trip name
+              if (extendToProvince) {
+                console.log(`🗺️ Trip extended to new province: ${extendToProvince}`);
+                // Get current title and append new province if not already included
+                const currentTitle = trip.title || '';
+                if (!currentTitle.includes(extendToProvince)) {
+                  const baseProvince = currentTitle.match(/ทริป([ก-๙a-zA-Z]+)/)?.[1] || '';
+                  const newTitle = baseProvince 
+                    ? `ทริป${baseProvince}-${extendToProvince} ${newTotalDays} วัน`
+                    : `ทริป${extendToProvince} ${newTotalDays} วัน`;
+                  
+                  await tripService.updateTrip(tripId, { title: newTitle });
+                  console.log(`📝 Updated trip title to: ${newTitle}`);
+                }
               }
             }
+          } else {
+            console.warn('⚠️ MODIFY_TRIP action received but new_total_days not found or invalid');
           }
           break;
         }

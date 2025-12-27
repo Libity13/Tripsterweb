@@ -154,13 +154,12 @@ const Chat = () => {
           if (validatedResponse.actions && validatedResponse.actions.length > 0) {
             console.log('🎯 Processing AI actions:', validatedResponse.actions);
             
-            setAiStatus('processing'); // Set AI status to processing
             // Pass both user message and AI reply to help intent/day extraction
             const combinedContext = `${message} ${validatedResponse.reply || ''}`.trim();
             await processAIActions(validatedResponse.actions, combinedContext);
-            setAiStatus('completed'); // Set AI status to completed
             
             // Show completed status for 2 seconds before hiding
+            setAiStatus('completed');
             await new Promise(resolve => setTimeout(resolve, 2000));
             setLoading(false);
             setAiStatus('idle');
@@ -471,12 +470,12 @@ const Chat = () => {
   const processAIActions = async (actions: any[], currentMessage?: string) => {
     try {
       console.log('🤖 Processing AI actions with new resolver:', actions);
-      setAiStatus('creating_trip'); // Set AI status to creating trip
       
       let currentTripId = tripId;
       
       if (!currentTripId) {
         console.log('🆕 No trip ID available, creating new trip...');
+        setAiStatus('creating_trip'); // Set AI status to creating trip
         
         // Extract trip duration from user messages
         let tripDuration = 2; // Default 2 days
@@ -498,13 +497,34 @@ const Chat = () => {
         
         // Extract location from actions or user message for trip title
         const addAction = actions.find((a: any) => a.action === 'ADD_DESTINATIONS');
-        const locationContext = addAction?.location_context || 
-          messageText.match(/(?:ไป|เที่ยว|ทริป)\s*(?:จังหวัด)?([ก-๙a-zA-Z]+)/)?.[1] || '';
+        
+        // Thai provinces list for validation
+        const thaiProvinces = ['กรุงเทพ', 'กระบี่', 'กาญจนบุรี', 'กาฬสินธุ์', 'กำแพงเพชร', 'ขอนแก่น', 'จันทบุรี', 'ฉะเชิงเทรา', 'ชลบุรี', 'ชัยนาท', 'ชัยภูมิ', 'ชุมพร', 'เชียงราย', 'เชียงใหม่', 'ตรัง', 'ตราด', 'ตาก', 'นครนายก', 'นครปฐม', 'นครพนม', 'นครราชสีมา', 'นครศรีธรรมราช', 'นครสวรรค์', 'นนทบุรี', 'นราธิวาส', 'น่าน', 'บึงกาฬ', 'บุรีรัมย์', 'ปทุมธานี', 'ประจวบคีรีขันธ์', 'ปราจีนบุรี', 'ปัตตานี', 'พระนครศรีอยุธยา', 'พะเยา', 'พังงา', 'พัทลุง', 'พิจิตร', 'พิษณุโลก', 'เพชรบุรี', 'เพชรบูรณ์', 'แพร่', 'ภูเก็ต', 'มหาสารคาม', 'มุกดาหาร', 'แม่ฮ่องสอน', 'ยโสธร', 'ยะลา', 'ร้อยเอ็ด', 'ระนอง', 'ระยอง', 'ราชบุรี', 'ลพบุรี', 'ลำปาง', 'ลำพูน', 'เลย', 'ศรีสะเกษ', 'สกลนคร', 'สงขลา', 'สตูล', 'สมุทรปราการ', 'สมุทรสงคราม', 'สมุทรสาคร', 'สระแก้ว', 'สระบุรี', 'สิงห์บุรี', 'สุโขทัย', 'สุพรรณบุรี', 'สุราษฎร์ธานี', 'สุรินทร์', 'หนองคาย', 'หนองบัวลำภู', 'อ่างทอง', 'อำนาจเจริญ', 'อุดรธานี', 'อุตรดิตถ์', 'อุทัยธานี', 'อุบลราชธานี'];
+        
+        // Try to find province in user message
+        let locationContext = addAction?.location_context || '';
+        
+        // Only use regex fallback if AI didn't provide location_context
+        if (!locationContext) {
+          // Look for province names in the message
+          for (const province of thaiProvinces) {
+            if (messageText.includes(province)) {
+              locationContext = province;
+              break;
+            }
+          }
+        }
+        
+        // Clean up location context - remove common words that aren't provinces
+        const invalidWords = ['สเตอร์', 'ทริปสเตอร์', 'ครับ', 'ค่ะ', 'นะ', 'หน่อย', 'อยาก', 'ไป'];
+        if (invalidWords.some(word => locationContext.includes(word))) {
+          locationContext = '';
+        }
         
         // Create trip title with location and duration
         const tripTitle = locationContext 
           ? `ทริป${locationContext} ${tripDuration} วัน`
-          : `ทริป ${tripDuration} วัน`;
+          : `แผนเที่ยว ${tripDuration} วัน`;
         
         // Create a new trip for the user - let AI determine the duration
         const newTrip = await tripService.createTrip({
