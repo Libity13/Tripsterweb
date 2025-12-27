@@ -16,4 +16,8 @@ export default defineConfig(({ mode }) => ({
     },
     extensions: ['.tsx', '.ts', '.jsx', '.js'],
   },
+  define: {
+    // Fix for qrcode library Buffer issue in browser
+    'global': 'globalThis',
+  },
 }));
