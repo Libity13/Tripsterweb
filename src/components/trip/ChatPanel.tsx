@@ -501,9 +501,9 @@ const ChatPanel = ({
           }
         } else {
           // Structured Response (Single-Step AI Flow)
-          setAiStep('completed');
-          setAiProgress(100);
-          setAiStepMessage('เสร็จสิ้น!');
+          setAiStep('storing');
+          setAiProgress(60);
+          setAiStepMessage('กำลังประมวลผล...');
           
           // Validate AI response using the new validator
           const validatedResponse = validateAIResponse(response);
@@ -546,11 +546,17 @@ const ChatPanel = ({
             if (validatedResponse.actions && validatedResponse.actions.length > 0) {
               console.log('🎯 Processing AI actions:', validatedResponse.actions);
               
+              setAiStepMessage('กำลังเพิ่มสถานที่...');
+              setAiProgress(70);
+              
               const actionsWithContext = validatedResponse.actions.map(action => ({
                 ...action,
                 ...(extractedDay && { day: extractedDay })
               }));
               await processAIActions(actionsWithContext, tripId);
+              
+              setAiProgress(90);
+              setAiStepMessage('กำลังอัพเดทข้อมูล...');
               
               // 🆕 Update trip name based on location
               const recommendAction: any = validatedResponse.actions.find((a: any) => a.action === 'RECOMMEND_PLACES');
@@ -561,6 +567,11 @@ const ChatPanel = ({
                 await tripService.updateTripNameByLocation(tripId, newLocation);
               }
             }
+            
+            // ✅ Set completed AFTER all processing is done
+            setAiStep('completed');
+            setAiProgress(100);
+            setAiStepMessage('เสร็จสิ้น!');
           } else {
             console.error('❌ AI response validation failed');
             toast.error('เกิดข้อผิดพลาดในการประมวลผลคำตอบจาก AI');

@@ -441,12 +441,19 @@ ${locale === 'th' ? 'ตอบเป็นภาษาไทยโดยใช�
     - If no specific action needed, use action: "NO_ACTION"
 
     
-    For MODIFY_TRIP (เพิ่มวัน, ขยายทริป, เปลี่ยนจำนวนวัน):
-    - Use when user says: "เพิ่มวันที่ 3", "ขยายเป็น 4 วัน", "อยากไปเพิ่มอีก 2 วัน", "ลดเหลือ 2 วัน"
-    - Include trip_modification with new_total_days
+    🔴 CRITICAL: For MODIFY_TRIP (เพิ่มวัน, ขยายทริป, เปลี่ยนจำนวนวัน):
+    - MUST use when user says: "เพิ่มวันที่ X", "ขยายเป็น X วัน", "อยากไปเพิ่มอีก X วัน", "ลดเหลือ X วัน", "เพิ่มอีกวัน"
+    - MUST send TWO actions in this EXACT order:
+      1. MODIFY_TRIP (to extend the trip duration FIRST)
+      2. ADD_DESTINATIONS (to add places for the new day)
+    - ALWAYS include trip_modification with new_total_days (the new TOTAL days, NOT how many to add)
     - If extending to new province, include extend_to_province
-    - Also provide ADD_DESTINATIONS with suggested places for new days
-    - Example: User says "เพิ่มวันที่ 3 ไปแพร่" → MODIFY_TRIP with new_total_days: 3, extend_to_province: "แพร่"
+    - Check trip context in conversation to see current trip duration (look for "trip_days" or count days from existing destinations)
+    - If user asks for "วันที่ 3" and current trip has 2 days, send new_total_days: 3
+    
+    Example: User says "เพิ่มวันที่ 3 ไปมหาสารคาม" for a 2-day trip:
+    → First action: { "action": "MODIFY_TRIP", "trip_modification": { "new_total_days": 3, "extend_to_province": "มหาสารคาม", "modification_type": "ADD_DAYS" } }
+    → Second action: { "action": "ADD_DESTINATIONS", "day": 3, "destinations": [...], "location_context": "มหาสารคาม" }
 
     
 
@@ -1113,11 +1120,12 @@ async function callOpenAI(
 }
 
 ⚠️ CRITICAL RULES:
-1. DO NOT add extra days! This trip has EXACTLY ${options.total_days || 'N/A'} days.
-2. MUST CREATE destinations for ALL ${options.total_days || 'N/A'} days! Do NOT leave any day empty!
-3. Each day should have 3-5 places (attractions, restaurants, activities).
-4. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
-5. 🚨 DISTRIBUTE EVENLY: DO NOT put all places in Day 1! Split them across all days equally.
+1. Current trip has EXACTLY ${options.total_days || 'N/A'} days.
+2. 🔴 If user asks to ADD A NEW DAY (e.g., "เพิ่มวันที่ 3"), MUST send MODIFY_TRIP action FIRST with new_total_days, then ADD_DESTINATIONS for the new day!
+3. MUST CREATE destinations for ALL days! Do NOT leave any day empty!
+4. Each day should have 3-5 places (attractions, restaurants, activities).
+5. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
+6. 🚨 DISTRIBUTE EVENLY: DO NOT put all places in Day 1! Split them across all days equally.
    - Example: 6 places for 2 days → Day 1: 3 places, Day 2: 3 places
    - ❌ WRONG: 6 places all in Day 1
    - ✅ CORRECT: 3 in Day 1, 3 in Day 2
@@ -1454,10 +1462,11 @@ async function callClaude(
 - Existing Destinations: ${options.destinations_count || 0} places
 
 ⚠️ CRITICAL RULES:
-1. DO NOT add extra days! This trip has EXACTLY ${options.total_days || 'N/A'} days.
-2. MUST CREATE destinations for ALL ${options.total_days || 'N/A'} days! Do NOT leave any day empty!
-3. Each day should have 3-5 places (attractions, restaurants, activities).
-4. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
+1. Current trip has EXACTLY ${options.total_days || 'N/A'} days.
+2. 🔴 If user asks to ADD A NEW DAY (e.g., "เพิ่มวันที่ 3"), MUST send MODIFY_TRIP action FIRST with new_total_days, then ADD_DESTINATIONS for the new day!
+3. MUST CREATE destinations for ALL days! Do NOT leave any day empty!
+4. Each day should have 3-5 places (attractions, restaurants, activities).
+5. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
 
 DECISION LOGIC:
 
@@ -2132,11 +2141,12 @@ async function callGemini(
 - Existing Destinations: ${options.destinations_count || 0} places
 
 ⚠️ CRITICAL RULES:
-1. DO NOT add extra days! This trip has EXACTLY ${options.total_days || 'N/A'} days.
-2. MUST CREATE destinations for ALL ${options.total_days || 'N/A'} days! Do NOT leave any day empty!
-3. Each day should have 3-5 places (attractions, restaurants, activities).
-4. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
-5. 🚨 DISTRIBUTE EVENLY: DO NOT put all places in Day 1! Split them across all days equally.
+1. Current trip has EXACTLY ${options.total_days || 'N/A'} days.
+2. 🔴 If user asks to ADD A NEW DAY (e.g., "เพิ่มวันที่ 3"), MUST send MODIFY_TRIP action FIRST with new_total_days, then ADD_DESTINATIONS for the new day!
+3. MUST CREATE destinations for ALL days! Do NOT leave any day empty!
+4. Each day should have 3-5 places (attractions, restaurants, activities).
+5. If creating a new trip plan, include destinations for Day 1 through Day ${options.total_days || 'N/A'}.
+6. 🚨 DISTRIBUTE EVENLY: DO NOT put all places in Day 1! Split them across all days equally.
    - Example: 6 places for 2 days → Day 1: 3 places, Day 2: 3 places
    - ❌ WRONG: 6 places all in Day 1
    - ✅ CORRECT: 3 in Day 1, 3 in Day 2
