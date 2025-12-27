@@ -164,7 +164,20 @@ const ChatPanel = ({
             trip_id: payload.new.trip_id,
             user_id: payload.new.user_id
           };
-          setMessages(prev => [...prev, newMessage]);
+          // 🆕 Check for duplicate before adding - prevent double messages from real-time subscription
+          setMessages(prev => {
+            // Check if message with same content and role already exists within last 5 seconds
+            const isDuplicate = prev.some(msg => 
+              msg.content === newMessage.content && 
+              msg.role === newMessage.role &&
+              Math.abs(new Date(msg.created_at).getTime() - new Date(newMessage.created_at).getTime()) < 5000
+            );
+            if (isDuplicate) {
+              console.log('⚠️ Skipping duplicate message from real-time');
+              return prev;
+            }
+            return [...prev, newMessage];
+          });
         }
       )
       .on(

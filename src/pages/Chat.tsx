@@ -564,6 +564,12 @@ const Chat = () => {
 
         if (hasDestinations || hasAddDestinationsAction) {
           console.log('🧭 AI finished planning, navigating to TripPlanner with trip ID:', currentTripId);
+          
+          // 🆕 Save messages to sessionStorage before navigation to prevent data loss
+          const pendingChatKey = `pending_chat_${currentTripId}`;
+          sessionStorage.setItem(pendingChatKey, JSON.stringify(messages));
+          console.log('💾 Saved chat messages to sessionStorage before navigation');
+          
           navigate(`/${language}/trip/${currentTripId}`);
           toast.success('สร้างแผนการเดินทางแล้ว! กำลังนำคุณไปยังหน้าแผนการเดินทาง...');
         } else {
