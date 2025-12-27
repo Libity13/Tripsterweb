@@ -564,7 +564,12 @@ const Chat = () => {
       console.log('✅ AI actions processed successfully');
       // Note: setAiStatus('completed') is handled by caller (handleSend)
       
-      // Reload the trip to show updated data
+      // Reload the trip to show updated data (only if we have a tripId)
+      if (!currentTripId) {
+        console.log('ℹ️ No trip ID, skipping trip reload');
+        return;
+      }
+      
       const updatedTrip = await tripService.getTrip(currentTripId);
       if (updatedTrip) {
         console.log('🔄 Trip data reloaded');
