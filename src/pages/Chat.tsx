@@ -53,6 +53,13 @@ const Chat = () => {
   useEffect(() => {
     const initialMessage = location.state?.initialMessage;
     if (initialMessage && messages.length === 0) {
+      // 🆕 Reset state when starting fresh from Home
+      setTripId(null);
+      setMessages([]);
+      setSuggestedPlaces([]);
+      setAiStatus('idle');
+      console.log('🔄 Starting fresh chat session from Home');
+      
       setInput(initialMessage);
       // Auto-send the initial message
       setTimeout(() => {
@@ -1134,6 +1141,25 @@ Return only place names, one per line:`;
                     <div className="sm:hidden">
                       <LanguageSwitcher />
                     </div>
+                  {/* 🆕 New Trip Button - always visible when there's history */}
+                  {(tripId || messages.length > 0) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setTripId(null);
+                        setMessages([]);
+                        setSuggestedPlaces([]);
+                        setAiStatus('idle');
+                        setInput('');
+                        toast.success(language === 'th' ? 'เริ่มแผนใหม่' : 'Started new plan');
+                      }}
+                      className="flex items-center gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {language === 'th' ? 'สร้างแผนใหม่' : 'New Plan'}
+                    </Button>
+                  )}
                   {tripId && (
                     <Button
                       variant="outline"
