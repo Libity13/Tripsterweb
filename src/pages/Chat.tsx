@@ -480,7 +480,11 @@ const Chat = () => {
       
       let currentTripId = tripId;
       
-      if (!currentTripId) {
+      // 🆕 Check if we need to create a trip - only for actions that require a trip
+      const actionsRequiringTrip = ['ADD_DESTINATIONS', 'MODIFY_TRIP', 'UPDATE_TRIP_INFO', 'REMOVE_DESTINATIONS', 'REORDER_DESTINATIONS'];
+      const needsTrip = actions.some(a => actionsRequiringTrip.includes(a.action));
+      
+      if (!currentTripId && needsTrip) {
         console.log('🆕 No trip ID available, creating new trip...');
         setAiStatus('creating_trip'); // Set AI status to creating trip
         

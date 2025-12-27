@@ -143,15 +143,16 @@ export const tripService = {
       const trip = await this.getTrip(tripId);
       if (!trip) return;
       
-      // Check if trip already has a location-based name
-      if (trip.title && !trip.title.includes('ทริปใหม่') && !trip.title.includes('แผนการเดินทางใหม่')) {
-        console.log('ℹ️ Trip already has a custom name, skipping update');
-        return;
-      }
-      
       // Calculate days
       const diffTime = new Date(trip.end_date || '').getTime() - new Date(trip.start_date || '').getTime();
       const days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
+      
+      // Check if the new location is already in the current title
+      // Skip update only if the exact location is already present
+      if (trip.title && trip.title.includes(location)) {
+        console.log(`ℹ️ Trip title already contains "${location}", skipping update`);
+        return;
+      }
       
       const newTitle = `ทริป${location} ${days} วัน`;
       const newTitleEn = `${location} Trip ${days} Days`;
