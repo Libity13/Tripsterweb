@@ -32,6 +32,7 @@ const MobileTripTabs = ({
   selectedDay,
   viewMode,
   onDestinationsUpdate,
+  onTripUpdate,
   onAddDestination,
   onViewModeChange,
   onSelectedDayChange
@@ -40,6 +41,7 @@ const MobileTripTabs = ({
   selectedDay: number;
   viewMode: 'grid' | 'timeline';
   onDestinationsUpdate: (destinations: Destination[]) => void;
+  onTripUpdate: (trip: Trip) => void;
   onAddDestination: (day: number) => void;
   onViewModeChange: (mode: 'grid' | 'timeline') => void;
   onSelectedDayChange: (day: number) => void;
@@ -95,6 +97,7 @@ const MobileTripTabs = ({
               <ChatPanel 
                 tripId={trip?.id}
                 onDestinationsUpdate={onDestinationsUpdate}
+                onTripUpdate={onTripUpdate}
               />
             </CardContent>
           </Card>
@@ -494,6 +497,7 @@ const TripPlanner = () => {
                   <ChatPanel 
                     tripId={trip?.id}
                     onDestinationsUpdate={handleDestinationsUpdate}
+                    onTripUpdate={setTrip}
                   />
                 </CardContent>
               </Card>
@@ -539,6 +543,7 @@ const TripPlanner = () => {
               selectedDay={selectedDay}
               viewMode={viewMode}
               onDestinationsUpdate={handleDestinationsUpdate}
+              onTripUpdate={setTrip}
               onAddDestination={handleAddDestination}
               onViewModeChange={setViewMode}
               onSelectedDayChange={setSelectedDay}

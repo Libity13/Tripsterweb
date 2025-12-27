@@ -29,13 +29,15 @@ import { detectLanguage, type Language } from '@/hooks/useLanguage';
 interface ChatPanelProps {
   tripId?: string;
   onDestinationsUpdate?: (destinations: Destination[]) => void;
+  onTripUpdate?: (trip: any) => void;
   onLoginPrompt?: () => void;
   height?: string;
 }
 
 const ChatPanel = ({ 
   tripId, 
-  onDestinationsUpdate, 
+  onDestinationsUpdate,
+  onTripUpdate,
   onLoginPrompt,
   height = '400px' 
 }: ChatPanelProps) => {
@@ -655,6 +657,9 @@ const ChatPanel = ({
     try {
       console.log('🤖 Processing AI actions with database sync:', actions.length, 'actions');
       
+      // Check if MODIFY_TRIP is in actions (need to reload full trip)
+      const hasModifyTrip = actions.some(a => a.action === 'MODIFY_TRIP');
+      
       // Sync AI actions to database
       await databaseSyncService.syncAIActions(actions, tripId);
       
@@ -663,9 +668,24 @@ const ChatPanel = ({
       
       if (onDestinationsUpdate) {
         onDestinationsUpdate(updatedDestinations);
-        toast.success('อัปเดตแผนการเดินทางแล้ว!');
       }
       
+      // If MODIFY_TRIP was processed, reload full trip data (title, end_date, etc.)
+      if (hasModifyTrip && onTripUpdate) {
+        console.log('🔄 MODIFY_TRIP detected, reloading full trip data...');
+        const updatedTrip = await tripService.getTrip(tripId);
+        if (updatedTrip) {
+          console.log('✅ Trip reloaded:', {
+            title: updatedTrip.title,
+            days: updatedTrip.days,
+            end_date: updatedTrip.end_date,
+            destinations_count: updatedTrip.destinations?.length
+          });
+          onTripUpdate(updatedTrip);
+        }
+      }
+      
+      toast.success('อัปเดตแผนการเดินทางแล้ว!');
       console.log('✅ AI actions processed successfully');
     } catch (error) {
       console.error('❌ Error processing AI actions:', error);
