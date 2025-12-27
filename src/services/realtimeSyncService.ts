@@ -104,11 +104,43 @@ export class RealtimeSyncService {
       console.log('🔄 Processing trip change:', { eventType, newRecord, oldRecord });
 
       if (eventType === 'UPDATE') {
-        // Trip updated
+        // Trip updated - need to reload full trip with destinations
+        console.log('🔄 Trip updated, reloading full trip data...');
+        
+        // Fetch full trip data with destinations
+        const { data: fullTrip, error: tripError } = await supabase
+          .from('trips')
+          .select('*')
+          .eq('id', options.tripId)
+          .single();
+          
+        if (tripError) throw tripError;
+        
+        const { data: destinations, error: destError } = await supabase
+          .from('destinations')
+          .select('*')
+          .eq('trip_id', options.tripId)
+          .order('order_index');
+          
+        if (destError) throw destError;
+        
+        const tripWithDestinations = {
+          ...fullTrip,
+          destinations: destinations || []
+        };
+        
+        console.log('✅ Trip reloaded with destinations:', {
+          title: tripWithDestinations.title,
+          days: tripWithDestinations.days,
+          start_date: tripWithDestinations.start_date,
+          end_date: tripWithDestinations.end_date,
+          destinations_count: tripWithDestinations.destinations?.length
+        });
+        
         toast.success('อัปเดตข้อมูลทริปแล้ว');
         
         if (options.onTripUpdate) {
-          options.onTripUpdate(newRecord);
+          options.onTripUpdate(tripWithDestinations);
         }
       }
     } catch (error) {
