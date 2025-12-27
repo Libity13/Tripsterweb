@@ -470,6 +470,9 @@ export class DatabaseSyncService {
         }
       }
       
+      // 🆕 Track MODIFY_TRIP's new_total_days to use for ADD_DESTINATIONS that follow
+      let modifyTripNewDays: number | null = null;
+      
       for (const action of sortedActions) {
         switch (action.action) {
           case 'ADD_DESTINATIONS':
@@ -479,7 +482,8 @@ export class DatabaseSyncService {
                 action: action.action, 
                 day: action.day, 
                 destinations: action.destinations.length,
-                location_context: locationContext 
+                location_context: locationContext,
+                modifyTripNewDays
               });
               
               // Extract day from action or default to 1
@@ -491,6 +495,13 @@ export class DatabaseSyncService {
                 if (dayMatch) {
                   targetDay = parseInt(dayMatch[1]);
                 }
+              }
+              
+              // 🆕 If this follows a MODIFY_TRIP, put ALL destinations in the new day
+              // This is for "เพิ่มวันที่ 3 ไปมหาสารคาม" where new places should go to day 3
+              if (!targetDay && modifyTripNewDays !== null) {
+                targetDay = modifyTripNewDays;
+                console.log(`📅 Using MODIFY_TRIP's new_total_days=${modifyTripNewDays} as target day for all destinations`);
               }
               
               // 🆕 ALWAYS fetch trip info to get totalTripDays for Clamp
@@ -540,7 +551,8 @@ export class DatabaseSyncService {
               // 2. All destinations have same day (not actually distributed), AND
               // 3. There are more than 2 destinations, AND
               // 4. Trip has multiple days
-              const shouldForceDistribute = (
+              // 5. 🆕 NOT following a MODIFY_TRIP (which sets a specific target day)
+              const shouldForceDistribute = modifyTripNewDays === null && (
                 !hasDestDays || // No days specified
                 (!isActuallyDistributed && hasDestDays) // All in same day
               ) && action.destinations.length > 2 && totalTripDays > 1;
@@ -667,6 +679,11 @@ export class DatabaseSyncService {
             const tripModification = action.trip_modification || action;
             const newTotalDays = tripModification.new_total_days || tripModification.new_days || null;
             const extendToProvince = tripModification.extend_to_province || null;
+            
+            // 🆕 Store new_total_days for ADD_DESTINATIONS that follow
+            if (newTotalDays && newTotalDays > 0) {
+              modifyTripNewDays = newTotalDays;
+            }
             
             console.log(`📅 MODIFY_TRIP parsed: newTotalDays=${newTotalDays}, extendToProvince=${extendToProvince}`);
             
