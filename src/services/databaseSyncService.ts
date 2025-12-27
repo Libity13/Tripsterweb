@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/unifiedSupabaseClient';
 import { toast } from 'sonner';
 import { geocodingService } from './geocodingService';
+import { tripService } from './tripService';
 import { Destination } from '@/types/database';
 
 export class DatabaseSyncService {
@@ -440,17 +441,36 @@ export class DatabaseSyncService {
     try {
       console.log('🤖 Syncing AI actions to database:', actions.length, 'actions');
       
+      // 🆕 Sort actions to ensure correct execution order
+      // MODIFY_TRIP (resize trip first) -> REMOVE -> ADD -> REORDER
+      const ACTION_PRIORITY: Record<string, number> = {
+        'MODIFY_TRIP': 0,
+        'UPDATE_TRIP_INFO': 1,
+        'REMOVE_DESTINATIONS': 2,
+        'ADD_DESTINATIONS': 3,
+        'REORDER_DESTINATIONS': 4,
+        'MOVE_DESTINATION': 5,
+      };
+      
+      const sortedActions = [...actions].sort((a, b) => {
+        const pA = ACTION_PRIORITY[a.action] ?? 99;
+        const pB = ACTION_PRIORITY[b.action] ?? 99;
+        return pA - pB;
+      });
+      
+      console.log('📋 Actions sorted by priority:', sortedActions.map(a => a.action));
+      
       // Count total destinations for progress tracking
       let totalDestinations = 0;
       let currentDestination = 0;
       
-      for (const action of actions) {
+      for (const action of sortedActions) {
         if (action.action === 'ADD_DESTINATIONS' && action.destinations) {
           totalDestinations += action.destinations.length;
         }
       }
       
-      for (const action of actions) {
+      for (const action of sortedActions) {
         switch (action.action) {
           case 'ADD_DESTINATIONS':
             if (action.destinations && action.destinations.length > 0) {
@@ -637,6 +657,59 @@ export class DatabaseSyncService {
           case 'REORDER_DESTINATIONS':
             if (action.destination_order && action.destination_order.length > 0) {
               await this.syncDestinationsOrder(action.destination_order, tripId);
+            }
+            break;
+          
+          case 'MODIFY_TRIP':
+            console.log('🔄 MODIFY_TRIP action:', JSON.stringify(action, null, 2));
+            
+            // Handle both nested and flat formats
+            const tripModification = action.trip_modification || action;
+            const newTotalDays = tripModification.new_total_days || tripModification.new_days || null;
+            const extendToProvince = tripModification.extend_to_province || null;
+            
+            console.log(`📅 MODIFY_TRIP parsed: newTotalDays=${newTotalDays}, extendToProvince=${extendToProvince}`);
+            
+            if (newTotalDays && newTotalDays > 0) {
+              try {
+                const trip = await tripService.getTrip(tripId);
+                if (trip) {
+                  // Calculate current days
+                  const currentStart = new Date(trip.start_date);
+                  const currentEnd = new Date(trip.end_date);
+                  const currentDays = Math.max(1, Math.ceil((currentEnd.getTime() - currentStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                  
+                  console.log(`📅 Current trip: ${currentDays} days (${trip.start_date} to ${trip.end_date})`);
+                  console.log(`📅 Changing trip duration from ${currentDays} to ${newTotalDays} days`);
+                  
+                  // Update trip duration
+                  await tripService.updateTripInfo(tripId, {
+                    days: newTotalDays
+                  });
+                  
+                  console.log(`✅ Trip duration updated to ${newTotalDays} days`);
+                  
+                  // If extending to new province, update trip name
+                  if (extendToProvince) {
+                    console.log(`🗺️ Trip extended to new province: ${extendToProvince}`);
+                    // Get current title and append new province if not already included
+                    const currentTitle = trip.title || '';
+                    if (!currentTitle.includes(extendToProvince)) {
+                      const baseProvince = currentTitle.match(/ทริป([ก-๙a-zA-Z]+)/)?.[1] || '';
+                      const newTitle = baseProvince 
+                        ? `ทริป${baseProvince}-${extendToProvince} ${newTotalDays} วัน`
+                        : `ทริป${extendToProvince} ${newTotalDays} วัน`;
+                      
+                      await tripService.updateTrip(tripId, { title: newTitle });
+                      console.log(`📝 Updated trip title to: ${newTitle}`);
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error('❌ Error processing MODIFY_TRIP:', error);
+              }
+            } else {
+              console.warn('⚠️ MODIFY_TRIP action received but new_total_days not found or invalid');
             }
             break;
             
