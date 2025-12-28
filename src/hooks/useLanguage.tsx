@@ -219,6 +219,10 @@ const translations = {
     'loginModal.errorGoogle': 'Google Sign In ไม่สำเร็จ',
     'loginModal.errorResend': 'ส่งอีเมลยืนยันไม่สำเร็จ',
     'loginModal.successResend': 'ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบอีเมลของคุณ',
+    // Navigation & Distance
+    'navigation.navigate': 'นำทาง',
+    'navigation.km': 'กม.',
+    'navigation.min': 'นาที',
   },
   en: {
     'app.title': 'Tripster',
@@ -426,6 +430,10 @@ const translations = {
     'loginModal.errorGoogle': 'Google Sign In failed',
     'loginModal.errorResend': 'Failed to resend verification email',
     'loginModal.successResend': 'Verification email sent! Please check your inbox.',
+    // Navigation & Distance
+    'navigation.navigate': 'Navigate',
+    'navigation.km': 'km',
+    'navigation.min': 'min',
   }
 };
 

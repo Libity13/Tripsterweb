@@ -17,6 +17,7 @@ import { Destination } from '@/types/database';
 import { RouteOptimizationModal } from '@/components/RouteOptimizationModal';
 import { RouteOptimizationLoadingModal } from '@/components/RouteOptimizationLoadingModal';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useLanguage } from '@/hooks/useLanguage';
 
 interface ItineraryPanelProps {
   destinations: Destination[];
@@ -325,6 +326,7 @@ const ItineraryPanel = ({
   onSelectedDayChange,
   tripId
 }: ItineraryPanelProps) => {
+  const { t } = useLanguage();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number>(1);
   const [dailyTimeEstimates, setDailyTimeEstimates] = useState<Map<number, any>>(new Map());
@@ -1032,16 +1034,16 @@ const ItineraryPanel = ({
                                             validation.severity === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100' :
                                             'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
                                           }`}
-                                          title="คลิกเพื่อเปิด Google Maps นำทาง"
+                                          title={t('navigation.navigate')}
                                         >
-                                          🚗 <span>{distance.toFixed(1)} กม.</span>
+                                          🚗 <span>{distance.toFixed(1)} {t('navigation.km')}</span>
                                           <span className="text-gray-500">•</span>
-                                          <span>{Math.round((distance / 40) * 60)} นาที</span>
+                                          <span>{Math.round((distance / 40) * 60)} {t('navigation.min')}</span>
                                           {validation.message && (
                                             <span className="ml-1">{validation.message.split(' ')[0]}</span>
                                           )}
                                           <span className="flex items-center gap-1 ml-1 opacity-70 group-hover:opacity-100">
-                                            นำทาง
+                                            {t('navigation.navigate')}
                                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                             </svg>
@@ -1189,7 +1191,7 @@ const ItineraryPanel = ({
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-2.5 rounded-full border border-blue-200 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer text-sm font-medium shadow-sm active:scale-95 group"
-                                            title="คลิกเพื่อเปิด Google Maps นำทาง"
+                                            title={t('navigation.navigate')}
                                           >
                                             <span className="text-blue-600">🚗</span>
                                             <span className="text-gray-700">{routeOptimizationService['calculateDistance'](
@@ -1197,10 +1199,10 @@ const ItineraryPanel = ({
                                               destination.longitude,
                                               dayDestinations[index + 1].latitude!,
                                               dayDestinations[index + 1].longitude!
-                                            ).toFixed(1)} กม.</span>
+                                            ).toFixed(1)} {t('navigation.km')}</span>
                                             <span className="text-gray-400">•</span>
                                             <span className="text-blue-600 group-hover:text-blue-700 flex items-center gap-1">
-                                              นำทาง
+                                              {t('navigation.navigate')}
                                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                               </svg>
