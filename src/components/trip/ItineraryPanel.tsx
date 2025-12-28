@@ -1027,7 +1027,7 @@ const ItineraryPanel = ({
                                           href={googleMapsUrl}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className={`flex items-center gap-2 px-4 py-2 mx-3 rounded-full text-sm font-medium cursor-pointer transition-all hover:scale-105 hover:shadow-md active:scale-95 ${
+                                          className={`flex items-center gap-2 px-4 py-2 mx-3 rounded-full text-sm font-medium cursor-pointer transition-all hover:scale-105 hover:shadow-md active:scale-95 group ${
                                             validation.severity === 'error' ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100' :
                                             validation.severity === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100' :
                                             'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
@@ -1040,6 +1040,12 @@ const ItineraryPanel = ({
                                           {validation.message && (
                                             <span className="ml-1">{validation.message.split(' ')[0]}</span>
                                           )}
+                                          <span className="flex items-center gap-1 ml-1 opacity-70 group-hover:opacity-100">
+                                            นำทาง
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                            </svg>
+                                          </span>
                                         </a>
                                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
                                       </div>
@@ -1182,15 +1188,23 @@ const ItineraryPanel = ({
                                             href={`https://www.google.com/maps/dir/?api=1&origin=${destination.latitude},${destination.longitude}&destination=${dayDestinations[index + 1].latitude},${dayDestinations[index + 1].longitude}&travelmode=driving`}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="flex items-center gap-1.5 bg-white px-4 py-2 rounded-full border border-gray-200 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-all cursor-pointer text-sm font-medium shadow-sm active:scale-95"
+                                            className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-2.5 rounded-full border border-blue-200 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer text-sm font-medium shadow-sm active:scale-95 group"
                                             title="คลิกเพื่อเปิด Google Maps นำทาง"
                                           >
-                                            🚗 {routeOptimizationService['calculateDistance'](
+                                            <span className="text-blue-600">🚗</span>
+                                            <span className="text-gray-700">{routeOptimizationService['calculateDistance'](
                                               destination.latitude,
                                               destination.longitude,
                                               dayDestinations[index + 1].latitude!,
                                               dayDestinations[index + 1].longitude!
-                                            ).toFixed(1)} km
+                                            ).toFixed(1)} กม.</span>
+                                            <span className="text-gray-400">•</span>
+                                            <span className="text-blue-600 group-hover:text-blue-700 flex items-center gap-1">
+                                              นำทาง
+                                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                              </svg>
+                                            </span>
                                           </a>
                                           <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
                                         </>
